@@ -269,6 +269,21 @@ export function settings() {
       toast({ kind: 'warn', title: 'Could not import', body: err.message });
     }
   } });
+  const pasteArea = h('textarea', { class: 'note-input', rows: 4, placeholder: 'Paste a universe you copied earlier…', 'aria-label': 'Universe text to import' });
+  const pasteStatus = h('span', { class: 'form-status', 'aria-live': 'polite' });
+  const pasteBox = h('div', { class: 'stack', hidden: true }, pasteArea,
+    h('div', { class: 'row wrap' },
+      h('button', { class: 'btn small primary', onclick: () => {
+        try {
+          importUniverse(JSON.parse(pasteArea.value));
+          closeModal();
+          toast({ kind: 'info', title: 'Universe restored', body: `${derived.litCount} stars are shining again.` });
+          app.onUniverseReplaced?.();
+        } catch (err) {
+          pasteStatus.textContent = err instanceof SyntaxError ? 'That text is not a copied universe.' : err.message;
+        }
+      } }, 'Restore from text'),
+      pasteStatus));
   let confirmReset = '';
   const resetBtn = (mode, label) => {
     const b = h('button', { class: 'btn ghost danger', onclick: () => {
@@ -298,7 +313,7 @@ export function settings() {
           : h('p', { class: 'lede' }, 'Speech is not available in this browser.')),
       h('section', { class: 'set-group' },
         h('h3', {}, 'Universe'),
-        h('p', { class: 'lede' }, 'Your universe lives in this browser. Export it to keep a copy or move it to another device.'),
+        h('p', { class: 'lede' }, 'Your universe lives in this browser. Export it as a file (or copy it as text) to keep a backup or move it to another device. Import accepts a file or pasted text.'),
         h('div', { class: 'row wrap' },
           h('button', { class: 'btn', onclick: () => {
             const blob = new Blob([exportUniverse()], { type: 'application/json' });
@@ -307,8 +322,20 @@ export function settings() {
             a.click();
             setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
           } }, icon('download', 16), 'Export'),
+          h('button', { class: 'btn', onclick: async (e) => {
+            const btn = e.currentTarget;
+            try {
+              await navigator.clipboard.writeText(exportUniverse());
+              btn.lastChild.textContent = 'Copied';
+            } catch {
+              btn.lastChild.textContent = 'Copy blocked — use Export';
+            }
+            setTimeout(() => { btn.lastChild.textContent = 'Copy'; }, 2200);
+          } }, icon('log', 16), h('span', {}, 'Copy')),
           h('button', { class: 'btn', onclick: () => file.click() }, icon('upload', 16), 'Import'),
+          h('button', { class: 'btn ghost', onclick: () => { pasteBox.hidden = !pasteBox.hidden; if (!pasteBox.hidden) pasteArea.focus(); } }, 'Paste…'),
           file),
+        pasteBox,
         h('div', { class: 'row wrap' },
           resetBtn('english', 'Restart: English starter universe'),
           resetBtn('empty', 'Restart: empty universe (any language)'))),
