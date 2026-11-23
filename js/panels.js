@@ -6,7 +6,7 @@ import {
 } from './store.js';
 import { PACKS, PACK_ORDER } from './packs/index.js';
 import { app, h, fill, $, icon, openModal, closeModal, toast } from './ui.js';
-import { speak, getVoices, speechSupported, setSoundEnabled } from './sfx.js';
+import { speak, getVoices, speechSupported, setSoundEnabled, voiceFor, voiceStatus, onVoicesChanged } from './sfx.js';
 
 export const TIERS = [
   { name: 'Spark', min: 0 },
@@ -24,7 +24,72 @@ export function mastery(seen = 0) {
   return { ...TIERS[i], tier: i, next: next?.min ?? null, pct: Math.max(4, Math.min(100, pct)) };
 }
 
-export const speechOpts = () => ({ rate: state.settings.rate, voiceURI: state.settings.voiceURI, lang: state.settings.lang });
+/** Speech always follows the language being learned, whatever was saved before. */
+export const speechLang = () => pack()?.voice || state.settings.lang || '';
+export const speechOpts = () => ({ rate: state.settings.rate, voiceURI: state.settings.voiceURI, lang: speechLang() });
+
+// ------------------------------------------------------------- voice help
+export const aOrAn = (word) => (/^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`);
+function platform() {
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  if (/Windows/.test(ua)) return 'windows';
+  if (/Macintosh|Mac OS X/.test(ua)) return 'mac';
+  return 'other';
+}
+const STEPS = {
+  ios: (L) => `iPhone / iPad: Settings → Accessibility → Spoken Content → Voices → ${L} → download a voice.`,
+  android: (L) => `Android: Settings → search “text-to-speech” → tap the gear next to the preferred engine → Install voice data → ${L}.`,
+  windows: (L) => `Windows: Settings → Time & language → Speech → Add voices → ${L}. Chrome and Edge also include online ${L} voices.`,
+  mac: (L) => `Mac: System Settings → Accessibility → Spoken Content → System voice → Manage Voices… → ${L}.`,
+  other: (L) => `Install ${aOrAn(L)} voice for your system’s text-to-speech, or open this page in Chrome, which includes online ${L} voices.`,
+};
+/** Steps to add a voice, with this device's steps first. */
+export function installSteps(L) {
+  const mine = platform();
+  return h('div', { class: 'install' },
+    h('p', { class: 'install-mine' }, STEPS[mine](L), ' Then reload this page.'),
+    h('details', {}, h('summary', {}, 'Steps for other devices'),
+      h('ul', {}, Object.keys(STEPS).filter((k) => k !== mine && k !== 'other').map((k) => h('li', {}, STEPS[k](L))))));
+}
+
+/** Which voice reads the language you're learning, and how to fix it if none can. */
+function voiceSection() {
+  const wrap = h('div', { class: 'stack voice-section' });
+  const draw = () => {
+    const lang = speechLang();
+    const base = lang.split('-')[0].toLowerCase();
+    const L = pack()?.english || 'that language';
+    const status = voiceStatus(lang);
+    const auto = voiceFor(lang, '');
+    const current = voiceFor(lang, state.settings.voiceURI);
+    const list = getVoices()
+      .filter((v) => !base || v.lang.replace(/_/g, '-').toLowerCase().split('-')[0] === base)
+      .sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
+    const chosen = list.find((v) => v.voiceURI === state.settings.voiceURI);
+    const sel = h('select', { class: 'select', id: 'voice-select', onchange: (e) => { setSetting('voiceURI', e.target.value); draw(); } },
+      h('option', { value: '' }, base ? (auto ? `Automatic — ${auto.name}` : 'Automatic') : 'Browser default'),
+      list.map((v) => h('option', { value: v.voiceURI, selected: v === chosen }, `${v.name} — ${v.lang}`)));
+    fill(wrap,
+      status === 'ok' && base && current
+        ? h('p', { class: 'voice-status ok' }, `✓ ${L} is read by “${current.name}” (${current.lang}).`) : null,
+      status === 'missing'
+        ? h('div', { class: 'voice-status warn' },
+          h('b', {}, `No ${L} voice on this device`),
+          h('p', {}, `Until you add one, your browser reads ${L} with an English voice, so the pronunciation is wrong. To add one:`),
+          installSteps(L)) : null,
+      status === 'unknown' && base
+        ? h('div', { class: 'voice-status note' },
+          h('p', {}, `This browser didn’t say which voices it has. If ${L} still sounds English, add ${aOrAn(L)} voice to your device, or open the page in your phone’s or computer’s browser:`),
+          installSteps(L)) : null,
+      list.length
+        ? h('label', { class: 'field', for: 'voice-select' }, h('span', { class: 'field-label' }, base ? `${L} voices on this device` : 'Speaking voice'), sel) : null);
+  };
+  draw();
+  onVoicesChanged(() => { if (wrap.isConnected) draw(); });
+  return wrap;
+}
 
 let cardId = null;
 const card = () => $('#starCard');
@@ -267,11 +332,7 @@ function toggle(label, desc, value, onChange) {
   return h('label', { class: 'toggle' }, input, h('span', { class: 'switch' }), h('span', { class: 'toggle-text' }, h('b', {}, label), desc && h('small', {}, desc)));
 }
 
-export function settings() {
-  const voices = getVoices().slice().sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
-  const voiceSel = h('select', { class: 'select', onchange: (e) => setSetting('voiceURI', e.target.value) },
-    h('option', { value: '' }, state.settings.lang ? `Automatic (${state.settings.lang})` : 'Browser default'),
-    voices.map((v) => h('option', { value: v.voiceURI, selected: v.voiceURI === state.settings.voiceURI }, `${v.name} — ${v.lang}`)));
+export function settings(section) {
   const rateOut = h('output', {}, `${state.settings.rate.toFixed(2)}×`);
   const rate = h('input', { type: 'range', min: '0.5', max: '1.3', step: '0.05', value: String(state.settings.rate), oninput: (e) => { setSetting('rate', Number(e.target.value)); rateOut.textContent = `${Number(e.target.value).toFixed(2)}×`; } });
   const file = h('input', { type: 'file', accept: 'application/json,.json', class: 'visually-hidden', onchange: async (e) => {
@@ -312,7 +373,7 @@ export function settings() {
     return b;
   };
 
-  openModal({
+  const box = openModal({
     kicker: 'Ship settings',
     title: 'Settings',
     size: 'wide',
@@ -324,10 +385,10 @@ export function settings() {
       h('section', { class: 'set-group' },
         h('h3', {}, 'Reading'),
         toggle('Show English meanings', 'A small translation under each word in your sentences and on the map.', state.settings.gloss, (v) => { setSetting('gloss', v); app.forge?.render?.(); })),
-      h('section', { class: 'set-group' },
+      h('section', { class: 'set-group', id: 'set-voice' },
         h('h3', {}, 'Voice'),
         speechSupported()
-          ? [h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speaking voice — pick one in the language you are learning'), voiceSel),
+          ? [voiceSection(),
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed ', rateOut), rate),
             h('button', { class: 'btn small', onclick: () => speak(pack()?.hello || 'Lexicosmos', speechOpts()) }, icon('speak', 16), 'Test voice')]
           : h('p', { class: 'lede' }, 'Speech is not available in this browser.')),
@@ -364,4 +425,8 @@ export function settings() {
         h('h3', {}, 'Why this works'),
         h('p', {}, 'You don’t need fifty thousand words. You need a few dozen you truly own — and the patterns that let each one slide into a thousand sentences. Every sector is a slot; every slot multiplies. Five subjects × twelve actions × fourteen things × eight times is already 6,720 sentences.'))),
   });
+  if (section) {
+    const target = box.querySelector(`#set-${section}`);
+    if (target) requestAnimationFrame(() => { target.scrollIntoView({ block: 'start' }); target.classList.add('flash'); });
+  }
 }

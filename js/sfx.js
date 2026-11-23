@@ -105,39 +105,99 @@ export function errorSound() {
 // ------------------------------------------------------------------ speech
 export const speechSupported = () => 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
 
+// "it_IT" (Android) and "it-IT" (everyone else) are the same language.
+const normLang = (l) => String(l || '').replace(/_/g, '-').toLowerCase();
+const baseOf = (l) => normLang(l).split('-')[0];
+
 let voicesCache = [];
+const waiters = [];
 export function getVoices() {
   if (!speechSupported()) return [];
   const v = window.speechSynthesis.getVoices();
-  if (v.length) voicesCache = v;
+  if (v.length) {
+    voicesCache = v;
+    waiters.splice(0).forEach((f) => f());
+  }
   return voicesCache;
 }
+
+/** Resolves once the browser has listed its voices, or after `timeout` ms. */
+export function whenVoicesReady(timeout = 1500) {
+  if (!speechSupported()) return Promise.resolve([]);
+  if (getVoices().length) return Promise.resolve(voicesCache);
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(getVoices()), timeout);
+    waiters.push(() => { clearTimeout(t); resolve(voicesCache); });
+  });
+}
+
+const voiceListeners = new Set();
+export const onVoicesChanged = (fn) => voiceListeners.add(fn);
 if (speechSupported()) {
-  window.speechSynthesis.addEventListener?.('voiceschanged', () => getVoices());
+  const changed = () => { getVoices(); voiceListeners.forEach((fn) => fn()); };
+  if (window.speechSynthesis.addEventListener) window.speechSynthesis.addEventListener('voiceschanged', changed);
+  else window.speechSynthesis.onvoiceschanged = changed;
   getVoices();
+}
+
+/**
+ * The best installed voice for a language ("it-IT", "es-ES"). A voice saved
+ * in Settings is used only if it actually speaks that language, so an
+ * English voice can never read Italian.
+ */
+export function voiceFor(lang, voiceURI = '') {
+  const voices = getVoices();
+  const want = normLang(lang);
+  const base = baseOf(lang);
+  const speaks = (v) => !base || baseOf(v.lang) === base;
+  if (voiceURI) {
+    const chosen = voices.find((x) => x.voiceURI === voiceURI);
+    if (chosen && speaks(chosen)) return chosen;
+  }
+  if (!base) return null;
+  const score = (v) => (normLang(v.lang) === want ? 8 : 0)
+    + (/premium|enhanced|natural|neural/i.test(v.name) ? 4 : 0)
+    + (/google/i.test(v.name) ? 2 : 0)
+    + (v.localService ? 1 : 0);
+  return voices.filter(speaks).sort((a, b) => score(b) - score(a))[0] || null;
+}
+
+/** 'ok', 'missing' (voices listed, none for this language), 'unknown' (no list) or 'unsupported'. */
+export function voiceStatus(lang) {
+  if (!speechSupported()) return 'unsupported';
+  if (!getVoices().length) return 'unknown';
+  if (!baseOf(lang)) return 'ok';
+  return voiceFor(lang) ? 'ok' : 'missing';
 }
 
 export function stopSpeaking() {
   if (speechSupported()) window.speechSynthesis.cancel();
 }
 
+let waitedOnce = false;
 /** Speak text. Resolves when done (or after a safety timeout). */
-export function speak(text, { rate = 0.9, voiceURI = '', lang = '', onBoundary } = {}) {
+export function speak(text, opts = {}) {
+  if (!speechSupported() || !text) return Promise.resolve(false);
+  // Speaking before the voice list arrives falls back to the system voice
+  // (usually English), so the very first time, give the list a moment.
+  if (!getVoices().length && opts.lang && !waitedOnce) {
+    waitedOnce = true;
+    return whenVoicesReady(700).then(() => speakNow(text, opts));
+  }
+  return speakNow(text, opts);
+}
+
+function speakNow(text, { rate = 0.9, voiceURI = '', lang = '', onBoundary } = {}) {
   return new Promise((resolve) => {
-    if (!speechSupported() || !text) { resolve(false); return; }
     try {
       const synth = window.speechSynthesis;
       synth.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.rate = rate;
-      const voices = getVoices();
-      let v = voiceURI ? voices.find((x) => x.voiceURI === voiceURI) : null;
-      if (!v && lang) {
-        const base = lang.slice(0, 2).toLowerCase();
-        v = voices.find((x) => x.lang?.toLowerCase() === lang.toLowerCase())
-          || voices.find((x) => x.lang?.toLowerCase().startsWith(base));
-      }
-      if (v) { u.voice = v; u.lang = v.lang; } else if (lang) u.lang = lang;
+      const v = voiceFor(lang, voiceURI);
+      if (v) u.voice = v;
+      // Always declare the language too: some browsers pick the voice from it.
+      if (lang || v) u.lang = v ? v.lang.replace(/_/g, '-') : lang;
       let done = false;
       const timer = setTimeout(() => finish(true), 2500 + text.length * 120);
       function finish(ok) {

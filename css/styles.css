@@ -1014,3 +1014,18 @@ body.drifting .hud, body.drifting .dock, body.drifting .mission-card, body.drift
 .lvl-words { display: flex; flex-wrap: wrap; gap: 4px 8px; font: 400 14px var(--serif); color: var(--faint); }
 .lvl-words .on { color: var(--ink); }
 .lvl-goals { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+
+/* voice status in settings */
+.voice-status { margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 13.5px; display: flex; flex-direction: column; gap: 6px; }
+.voice-status p { margin: 0; }
+.voice-status.ok { background: rgba(111, 242, 180, 0.08); color: var(--ok); }
+.voice-status.warn { background: rgba(255, 124, 124, 0.08); border: 1px solid rgba(255, 124, 124, 0.35); color: var(--ink); }
+.voice-status.warn b { color: var(--danger); font-weight: 600; }
+.voice-status.note { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); color: var(--ink-2); }
+.install { display: flex; flex-direction: column; gap: 6px; }
+.install-mine { color: var(--ink); font-weight: 500; }
+.install details { color: var(--dim); font-size: 12.5px; }
+.install summary { cursor: pointer; color: var(--ink-2); }
+.install ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.set-group.flash { animation: set-flash 1.6s ease; border-radius: 12px; }
+@keyframes set-flash { 0%, 40% { background: rgba(255, 210, 94, 0.1); } 100% { background: transparent; } }

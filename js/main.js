@@ -7,8 +7,8 @@ import {
 import { sentenceText, formatBig } from './language.js';
 import { createSpace } from './space.js';
 import { app, $, $$, h, fill, icon, toast, caption, countUp, closeModal, hidePopover, isPopoverOpen, isModalOpen } from './ui.js';
-import { unlockAudio, igniteSound, setSoundEnabled, speak } from './sfx.js';
-import { initPanels, speechOpts } from './panels.js';
+import { unlockAudio, igniteSound, setSoundEnabled, speak, whenVoicesReady, voiceStatus } from './sfx.js';
+import { initPanels, speechOpts, speechLang, aOrAn } from './panels.js';
 import { initForge } from './forge.js';
 import { initGalaxy } from './galaxy.js';
 import { initLog } from './logbook.js';
@@ -86,6 +86,21 @@ on('moved', ({ id, newSector }) => {
   }
   space.focusWord(id, Math.max(space.cam.z, 0.9));
 });
+
+// If this device has no voice for the language you're learning, the browser
+// quietly reads it with an English voice. Say so once, and show the fix.
+async function checkVoice() {
+  const p = pack();
+  if (!p || p.id === 'en') return;
+  await whenVoicesReady(2500);
+  if (pack() !== p || voiceStatus(speechLang()) !== 'missing' || !markHint(`novoice:${p.id}`)) return;
+  toast({
+    kind: 'warn', title: `No ${p.english} voice on this device`, timeout: 15000,
+    body: `Words are being read by an English voice, so they sound English. Adding ${aOrAn(p.english)} voice to your device fixes it.`,
+    action: { label: 'Show me how', fn: () => app.panels.settings('voice') },
+  });
+}
+on('reset', () => checkVoice());
 
 on('settings', ({ key, value }) => {
   if (key === 'sound') { setSoundEnabled(value); updateSoundBtn(); }
@@ -181,7 +196,9 @@ function updateSoundBtn() {
 
 function updateMissionCard() {
   const el = $('#missionCard');
-  requestAnimationFrame(() => document.documentElement.style.setProperty('--mission-h', `${el.offsetHeight || 0}px`));
+  // Toasts stack under the mission card; only measure it while it is shown,
+  // so the column doesn't jump up and back down as the card appears.
+  requestAnimationFrame(() => { if (el.offsetHeight) document.documentElement.style.setProperty('--mission-h', `${el.offsetHeight}px`); });
   const lp = levelProgress();
   if (lp && !(lp.final && state.journeyDone)) {
     const row = (label, v, n) => h('span', { class: 'goal' + (v >= n ? ' met' : '') },
@@ -345,6 +362,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 // ---------------------------------------------------------------- start
 function enterLive({ returning = false } = {}) {
   document.body.classList.add('live');
+  checkVoice();
   $('#hud').hidden = false;
   $('#dock').hidden = false;
   $('#missionCard').hidden = false;
