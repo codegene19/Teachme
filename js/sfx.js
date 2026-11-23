@@ -1,6 +1,8 @@
 // Music of the spheres: every sector has its own note on a pentatonic scale,
 // so any sentence you build plays as a little melody. Plus text-to-speech.
 
+import { piperStatus, preparePiper, speakPiper, stopPiper, unlockPiperAudio } from './piper.js';
+
 let ac = null;
 let out = null;
 let chimesOn = true;
@@ -8,6 +10,7 @@ let chimesOn = true;
 export function setSoundEnabled(v) { chimesOn = !!v; }
 
 export function unlockAudio() {
+  unlockPiperAudio();
   try {
     if (!ac) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -171,13 +174,25 @@ export function voiceStatus(lang) {
 }
 
 export function stopSpeaking() {
+  stopPiper();
   if (speechSupported()) window.speechSynthesis.cancel();
 }
 
 let waitedOnce = false;
 /** Speak text. Resolves when done (or after a safety timeout). */
 export function speak(text, opts = {}) {
-  if (!speechSupported() || !text) return Promise.resolve(false);
+  if (!text) return Promise.resolve(false);
+  // Piper, once its voice is downloaded; until then (or if it fails) the device voice speaks
+  if (opts.engine === 'piper' && opts.piperVoice) {
+    const state = piperStatus(opts.piperVoice).state;
+    if (state === 'ready') {
+      if (speechSupported()) window.speechSynthesis.cancel();
+      return speakPiper(opts.piperVoice, text, opts.rate).catch(() => false)
+        .then((ok) => ok || (speechSupported() ? speakNow(text, opts) : false));
+    }
+    if (state !== 'error') preparePiper(opts.piperVoice);
+  }
+  if (!speechSupported()) return Promise.resolve(false);
   // Speaking before the voice list arrives falls back to the system voice
   // (usually English), so the very first time, give the list a moment.
   if (!getVoices().length && opts.lang && !waitedOnce) {

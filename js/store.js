@@ -110,7 +110,7 @@ function freshState(packId) {
     categories, words: {}, constellations: {}, galaxies: {},
     missions: {}, hints: {}, sighted: {},
     stats: { swaps: 0, spoken: 0, shuffles: 0, ignited: 0, drifts: 0, eclipses: 0, streak: 0, bestStreak: 0, made: 0 },
-    settings: { sound: true, speakOnIgnite: true, gloss: true, voiceURI: '', rate: 0.9, lang: p?.voice || '' },
+    settings: { sound: true, speakOnIgnite: true, gloss: true, voiceURI: '', rate: 0.9, lang: p?.voice || '', voiceEngine: 'device', piperVoices: {} },
     forge: emptyForge(), galaxyDraft: emptyGalaxy(), nextOrder: 0,
   };
   if (p) addPackWords(s, p);

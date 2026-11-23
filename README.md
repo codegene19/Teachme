@@ -84,6 +84,19 @@ There's also an English starter (80 words, revealed through their neighbours rat
 
 Drag to pan, scroll or pinch to zoom. Double-click a star to add it to your sentence; double-click empty space to dive in.
 
+### Natural voices with Piper
+
+**Settings → Voice** offers two engines:
+
+- **Device voice** (default): the voices built into your phone or browser. It's instant, but quality depends on the device. Edge's "Natural" voices and the Enhanced/Premium voices on iPhone and Mac are the best of these.
+- **Piper**: open-source neural voices ([Piper](https://github.com/rhasspy/piper), MIT) that run entirely inside the browser:
+  - Italian: *Paola* (64 MB) or *Riccardo* (28 MB).
+  - Spanish: *Davefx*, *Sharvard*, *Claude* or *Ald*, from Spain and Mexico (63–77 MB).
+
+  A voice downloads once, is stored in the browser's private storage, and then works offline. Settings shows download progress and can remove a stored voice. Until the voice is ready, or if Piper can't load, the device voice speaks.
+
+Piper needs internet access to `huggingface.co` (the voice files), `cdn.jsdelivr.net` and `cdnjs.cloudflare.com` (its runtime). The Claude artifact preview blocks these, so Piper only works where the app is hosted normally, for example GitHub Pages or `python3 -m http.server`. The browser library is vendored in `js/vendor/piper-tts-web/` (MIT).
+
 ## Running it
 
 No build step and no dependencies: just static files using ES modules. Serve the folder over HTTP (modules don't load from `file://`):
@@ -118,5 +131,6 @@ Your universe is saved in the browser's `localStorage`. Use **Settings → Expor
 | `js/drift.js` | Autopilot |
 | `js/logbook.js`, `js/missions.js` | Star chart, saved work, missions |
 | `js/panels.js` | Star card, word dialogs, sector picker, settings |
+| `js/piper.js`, `js/vendor/piper-tts-web/` | Piper neural voices: loading, download progress, storage, playback |
 | `js/sfx.js` | Pentatonic chimes (each sector has its own note) and text-to-speech |
 | `js/genesis.js`, `js/main.js` | Opening sequence and wiring |

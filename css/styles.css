@@ -1045,3 +1045,15 @@ body.drifting .hud, body.drifting .dock, body.drifting .mission-card, body.drift
 .galaxy-head { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 2px; font-size: 12px; color: var(--dim); }
 .galaxy-head b { color: var(--c); font: 600 11px var(--ui); letter-spacing: 0.18em; text-transform: uppercase; }
 .stat-level span { white-space: nowrap; }
+
+/* voice engine choice */
+.engine-opts { display: grid; gap: 6px; }
+.engine-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); cursor: pointer; }
+.engine-opt.active { border-color: rgba(255, 210, 94, 0.6); background: rgba(255, 210, 94, 0.06); }
+.engine-opt.disabled { opacity: 0.5; cursor: default; }
+.engine-opt input { margin-top: 3px; accent-color: var(--accent); }
+.engine-text { display: flex; flex-direction: column; gap: 2px; }
+.engine-text b { font-weight: 500; font-size: 14px; }
+.engine-text small { color: var(--dim); font-size: 12px; }
+.voice-status .bar { width: 100%; }
+.device-head { margin-top: 6px; }

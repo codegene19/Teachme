@@ -17,6 +17,8 @@ import { initEclipse } from './eclipse.js';
 import { checkMissions, pendingMissions, doneCount, MISSIONS } from './missions.js';
 import { runGenesis } from './genesis.js';
 import { canGenerate } from './generate.js';
+import { preparePiper, onPiperStatus, piperStatus } from './piper.js';
+import { piperVoice } from './panels.js';
 
 load();
 setSoundEnabled(state.settings.sound);
@@ -116,6 +118,23 @@ async function checkVoice() {
   });
 }
 on('reset', () => checkVoice());
+
+// Piper: load the chosen voice in the background, and say once when it is ready (or can't load).
+const piperSaid = new Set();
+function warmPiper() {
+  if (state.settings.voiceEngine === 'piper' && piperVoice()) preparePiper(piperVoice());
+}
+onPiperStatus((vid) => {
+  if (state.settings.voiceEngine !== 'piper' || vid !== piperVoice()) return;
+  const st = piperStatus(vid);
+  if ((st.state === 'ready' || st.state === 'error') && !piperSaid.has(`${vid}:${st.state}`)) {
+    piperSaid.add(`${vid}:${st.state}`);
+    if (st.state === 'ready') toast({ kind: 'info', title: 'Piper voice ready', body: 'Words and sentences are now read by the natural voice.' });
+    else toast({ kind: 'warn', title: 'Piper could not load', body: 'Using the device voice instead. Settings → Voice explains why.', action: { label: 'Open settings', fn: () => app.panels.settings('voice') } });
+  }
+});
+setTimeout(warmPiper, 1500);
+on('reset', () => setTimeout(warmPiper, 500));
 
 on('settings', ({ key, value }) => {
   if (key === 'sound') { setSoundEnabled(value); updateSoundBtn(); }

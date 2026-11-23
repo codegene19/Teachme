@@ -96,6 +96,8 @@
   <div class="modal-root" id="modal" hidden></div>
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
+  <!-- Piper voices: the vendored library imports onnxruntime-web by name; map it to a pinned build. -->
+  <script type="importmap">{ "imports": { "onnxruntime-web/wasm": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/esm/ort.wasm.min.js" } }</script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

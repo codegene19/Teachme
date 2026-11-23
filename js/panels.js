@@ -7,6 +7,7 @@ import {
 import { PACKS, PACK_ORDER } from './packs/index.js';
 import { GALAXIES } from './seed.js';
 import { app, h, fill, $, icon, openModal, closeModal, toast } from './ui.js';
+import { PIPER_VOICES, piperStatus, preparePiper, onPiperStatus, storedVoices, removePiperVoice } from './piper.js';
 import { speak, getVoices, speechSupported, setSoundEnabled, voiceFor, voiceStatus, onVoicesChanged } from './sfx.js';
 
 export const TIERS = [
@@ -27,7 +28,16 @@ export function mastery(seen = 0) {
 
 /** Speech always follows the language being learned, whatever was saved before. */
 export const speechLang = () => pack()?.voice || state.settings.lang || '';
-export const speechOpts = () => ({ rate: state.settings.rate, voiceURI: state.settings.voiceURI, lang: speechLang() });
+/** The Piper voice chosen for the current language (or its default). */
+export const piperVoice = () => {
+  const list = PIPER_VOICES[state.pack] || [];
+  const chosen = state.settings.piperVoices?.[state.pack];
+  return list.find((v) => v.id === chosen)?.id || list[0]?.id || null;
+};
+export const speechOpts = () => ({
+  rate: state.settings.rate, voiceURI: state.settings.voiceURI, lang: speechLang(),
+  engine: state.settings.voiceEngine || 'device', piperVoice: piperVoice(),
+});
 
 // ------------------------------------------------------------- voice help
 export const aOrAn = (word) => (/^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`);
@@ -53,6 +63,70 @@ export function installSteps(L) {
     h('p', { class: 'install-mine' }, STEPS[mine](L), ' Then reload this page.'),
     h('details', {}, h('summary', {}, 'Steps for other devices'),
       h('ul', {}, Object.keys(STEPS).filter((k) => k !== mine && k !== 'other').map((k) => h('li', {}, STEPS[k](L))))));
+}
+
+/** Device voice or Piper, and Piper's voice, download state and storage. */
+function engineSection() {
+  const wrap = h('div', { class: 'stack engine' });
+  let statusEl = null;
+  const statusLine = (vid) => {
+    const st = piperStatus(vid);
+    const v = (PIPER_VOICES[state.pack] || []).find((x) => x.id === vid);
+    if (st.state === 'ready') return h('p', { class: 'voice-status ok' }, `✓ ${v?.name} is ready and stored on this device.`);
+    if (st.state === 'loading') {
+      const pct = Math.round((st.progress || 0) * 100);
+      return h('div', { class: 'voice-status note' }, h('span', {}, pct ? `Downloading ${v?.name}… ${pct}%` : `Loading ${v?.name}…`),
+        h('span', { class: 'bar' }, h('i', { style: { width: `${pct}%` } })),
+        h('small', {}, 'The device voice speaks until it is ready.'));
+    }
+    if (st.state === 'error') {
+      return h('div', { class: 'voice-status warn' }, h('b', {}, 'Piper could not load here'),
+        h('p', {}, 'It needs internet access to huggingface.co (the voices) and two script CDNs. The Claude preview blocks these, so use the GitHub-hosted app. Until then the device voice speaks.'),
+        h('small', {}, st.error));
+    }
+    return h('p', { class: 'voice-status note' }, `${v?.name} downloads the first time it speaks (${v?.note.split(' · ').pop()}), then works offline. You can download it now.`);
+  };
+  const draw = async () => {
+    const engine = state.settings.voiceEngine || 'device';
+    const list = PIPER_VOICES[state.pack] || [];
+    const vid = piperVoice();
+    const stored = engine === 'piper' && list.length ? await storedVoices() : [];
+    const st = vid ? piperStatus(vid) : { state: 'idle' };
+    const radio = (val, title, desc, disabled = false) => h('label', { class: `engine-opt${engine === val ? ' active' : ''}${disabled ? ' disabled' : ''}` },
+      h('input', { type: 'radio', name: 'voice-engine', value: val, checked: engine === val, disabled, onchange: () => {
+        setSetting('voiceEngine', val);
+        if (val === 'piper' && vid) preparePiper(vid);
+        draw();
+      } }),
+      h('span', { class: 'engine-text' }, h('b', {}, title), h('small', {}, desc)));
+    statusEl = vid ? statusLine(vid) : null;
+    fill(wrap,
+      h('div', { class: 'engine-opts', role: 'radiogroup', 'aria-label': 'Voice engine' },
+        radio('device', 'Device voice', 'Built into your phone or browser. Instant; quality depends on the device.'),
+        radio('piper', 'Piper — natural voice', list.length
+          ? 'Open-source neural voice that runs inside this browser. Downloads once, then works offline.'
+          : 'Available for Italian and Spanish.', !list.length)),
+      engine === 'piper' && list.length ? [
+        h('label', { class: 'field', for: 'piper-voice' }, h('span', { class: 'field-label' }, `${pack()?.english} Piper voice`),
+          h('select', { class: 'select', id: 'piper-voice', onchange: (e) => {
+            setSetting('piperVoices', { ...(state.settings.piperVoices || {}), [state.pack]: e.target.value });
+            preparePiper(e.target.value);
+            draw();
+          } }, list.map((v) => h('option', { value: v.id, selected: v.id === vid }, `${v.name} — ${v.note}`)))),
+        statusEl,
+        h('div', { class: 'row wrap' },
+          st.state === 'idle' || st.state === 'error' ? h('button', { class: 'btn small', onclick: () => { preparePiper(vid); draw(); } }, icon('download', 16), st.state === 'error' ? 'Try again' : 'Download now') : null,
+          stored.includes(vid) ? h('button', { class: 'btn small ghost danger', onclick: async () => { await removePiperVoice(vid); draw(); } }, icon('trash', 16), 'Remove from this device') : null),
+      ] : null);
+  };
+  draw();
+  onPiperStatus((vid) => {
+    if (!wrap.isConnected || vid !== piperVoice() || state.settings.voiceEngine !== 'piper') return;
+    const st = piperStatus(vid);
+    // progress only refreshes the status line, so an open dropdown isn't disturbed
+    if (st.state === 'loading' && statusEl?.isConnected) { const next = statusLine(vid); statusEl.replaceWith(next); statusEl = next; } else draw();
+  });
+  return wrap;
 }
 
 /** Which voice reads the language you're learning, and how to fix it if none can. */
@@ -403,7 +477,9 @@ export function settings(section) {
       h('section', { class: 'set-group', id: 'set-voice' },
         h('h3', {}, 'Voice'),
         speechSupported()
-          ? [voiceSection(),
+          ? [engineSection(),
+            h('div', { class: 'field-label device-head' }, 'Device voice'),
+            voiceSection(),
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed ', rateOut), rate),
             h('button', { class: 'btn small', onclick: () => speak(pack()?.hello || 'Lexicosmos', speechOpts()) }, icon('speak', 16), 'Test voice')]
           : h('p', { class: 'lede' }, 'Speech is not available in this browser.')),
