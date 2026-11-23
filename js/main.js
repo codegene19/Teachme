@@ -6,7 +6,7 @@ import {
 } from './store.js';
 import { sentenceText, formatBig } from './language.js';
 import { createSpace } from './space.js';
-import { app, $, $$, h, fill, icon, toast, caption, countUp, closeModal, hidePopover, isPopoverOpen, isModalOpen } from './ui.js';
+import { app, $, $$, h, fill, icon, toast, trimToasts, caption, countUp, closeModal, hidePopover, isPopoverOpen, isModalOpen } from './ui.js';
 import { unlockAudio, igniteSound, setSoundEnabled, speak, whenVoicesReady, voiceStatus } from './sfx.js';
 import { initPanels, speechOpts, speechLang, aOrAn } from './panels.js';
 import { initForge } from './forge.js';
@@ -23,6 +23,7 @@ setSoundEnabled(state.settings.sound);
 const space = createSpace($('#space'), {
   onStar: (id) => app.panels.openStarCard(id),
   onUnlit: (id) => igniteFromMap(id),
+  onStarDouble: (id) => addFromMap(id),
   onBackground: () => app.panels.closeStarCard(),
 });
 app.space = space;
@@ -38,6 +39,15 @@ initEclipse();
 function igniteFromMap(id) {
   unlockAudio();
   ignite(id);
+}
+
+// Double-click (or double-tap) a star: straight into the sentence.
+function addFromMap(id) {
+  if (app.drift.isOn() || !document.body.classList.contains('live')) return;
+  unlockAudio();
+  app.panels.closeStarCard();
+  app.forge.addWord(id, { fromMap: true });
+  markHint('doubleClickAdd');
 }
 
 // ------------------------------------------------------------ discovery
@@ -64,7 +74,11 @@ on('ignite', ({ id, newSector, quiet }) => {
     }
     return;
   }
-  if (!quiet && document.body.classList.contains('live') && !app.drift.isOn()) revealAround(id);
+  // Wait out the double-click window before moving the camera, so a second
+  // click still lands on this star; and stay still while a sentence is being built.
+  if (!quiet && document.body.classList.contains('live') && !app.drift.isOn()) {
+    setTimeout(() => { if (!app.forge.isOpen() && !app.drift.isOn()) revealAround(id); }, 420);
+  }
 });
 
 // After an ignition, pull the camera back just enough to show the newly
@@ -228,7 +242,7 @@ function updateMissionCard() {
 const UNLOCKS = {
   forge: {
     name: 'Forge', short: 'bind stars into sentences', title: 'The Forge is online', open: () => app.forge.open(),
-    body: 'Bind your stars into a sentence. Then turn any word into a variable and watch one sentence become hundreds.',
+    body: 'Double-click any star to drop it into a sentence. Then turn a word into a variable and watch one sentence become hundreds.',
     test: () => derived.litCount >= (state.pack ? 2 : 1) || state.forge.tokens.length > 0,
   },
   galaxy: {
@@ -284,6 +298,7 @@ function updateInsets() {
 app.updateInsets = updateInsets;
 app.onSheetChange = () => {
   requestAnimationFrame(updateInsets);
+  trimToasts();
   $$('#dock [data-action]').forEach((b) => {
     const a = b.dataset.action;
     const on = (a === 'forge' && app.forge.isOpen()) || (a === 'galaxy' && app.galaxy.isOpen()) || (a === 'log' && app.log.isOpen());

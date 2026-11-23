@@ -95,19 +95,26 @@ const KICKERS = {
   warn: '△ Notice',
 };
 
+/** How many notices fit: fewer on a phone, just one while a panel covers the sky. */
+const toastLimit = () => (window.innerWidth >= 720 ? 3 : document.body.classList.contains('sheet-open') ? 1 : 2);
+
+/** Make room for `incoming` more toasts, dropping the oldest of the least important — a level-up is never pushed out by a routine notice. */
+export function trimToasts(incoming = 0) {
+  const box = $('#toasts');
+  if (!box) return;
+  while (box.children.length && box.children.length + incoming > toastLimit()) {
+    const all = [...box.children];
+    const low = Math.min(...all.map((t) => Number(t.dataset.p)));
+    all.find((t) => Number(t.dataset.p) === low).remove();
+  }
+}
+
 const PRIORITY = { level: 4, sighting: 3, sector: 2, signal: 2, mission: 1, warn: 2, info: 0 };
 
 export function toast({ kind = 'signal', title, body, action, timeout = 6000, color } = {}) {
   const box = $('#toasts');
   if (!box) return;
-  const max = window.innerWidth < 720 ? 2 : 3;
-  // When full, drop the oldest of the least important notices — a level-up
-  // should never be pushed out by a routine one.
-  while (box.children.length >= max) {
-    const all = [...box.children];
-    const low = Math.min(...all.map((t) => Number(t.dataset.p)));
-    all.find((t) => Number(t.dataset.p) === low).remove();
-  }
+  trimToasts(1);
   let timer = null;
   const el = h('div', { class: `toast toast-${kind}`, role: 'status', 'data-p': String(PRIORITY[kind] ?? 1), style: color ? { '--c': color } : null },
     h('div', { class: 'toast-kicker' }, KICKERS[kind] || ''),

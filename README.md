@@ -31,7 +31,7 @@ The verb follows the subject: switch *io* to *noi* and *voglio* becomes *vogliam
 
 1. **Genesis**: choose Italiano or Español, then pick your first word from the most-used words drifting in the dark. Each one shows its English meaning.
 2. **Discover**: tap the faint stars connected to yours. Each one is a word that sits next to yours in a real sentence. Words are spoken aloud as they ignite.
-3. **Forge**: tap a star and choose *Add to sentence*, or just type a whole sentence. Then tap any word and choose **Make variable**. Click the coloured words, scroll over a variable, or hit **Shuffle** to spin the sentence. The counter shows how many sentences the pattern can make.
+3. **Forge**: **double-click any star** (double-tap on a phone) to drop it into your sentence. Faint stars light up and join in one go. You can also tap a star and choose *Add to sentence*, or type a whole sentence. Then tap any word and choose **Make variable**. Click the coloured words, scroll over a variable, or hit **Shuffle** to spin the sentence. The counter shows how many sentences the pattern can make.
 4. **Save** it as a constellation. It's drawn into your sky, and the number of *sentences within reach* climbs.
 5. **Galaxy**: chain constellations into paragraphs and spin the links between them.
 6. **Eclipse**: one word of a sentence goes dark. You hear the sentence, then pick the missing word — active recall using your own patterns.
@@ -75,7 +75,7 @@ There's also an English starter (80 words, revealed through their neighbours rat
 
 `F` Forge · `G` Galaxy · `E` Eclipse · `D` Drift · `L` Logbook · `N` new word · `S` shuffle · `V` hear · `0` show everything · `Esc` close
 
-Drag to pan, scroll or pinch to zoom, double-click to dive in.
+Drag to pan, scroll or pinch to zoom. Double-click a star to add it to your sentence; double-click empty space to dive in.
 
 ## Running it
 

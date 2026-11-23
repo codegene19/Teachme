@@ -15,7 +15,7 @@ import { speechOpts } from './panels.js';
 import { glossed } from './forge.js';
 
 const root = $('#galaxy');
-let paraEl, partsEl, countEl, nameInput, addSel, saveBtn, editTag;
+let paraEl, partsEl, countEl, countLabel, nameInput, addSel, saveBtn, editTag;
 
 const G = () => state.galaxyDraft;
 const linkOptions = () => [null, ...(derived.orbit.link || [])];
@@ -35,7 +35,7 @@ export function initGalaxy() {
   root.replaceChildren(
     h('div', { class: 'sheet-head' },
       h('div', { class: 'sheet-title' }, h('span', { class: 'kicker' }, icon('galaxy', 14), 'Galaxy'), nameInput, editTag),
-      h('div', { class: 'sheet-count', title: 'Different paragraphs this galaxy can make' }, countEl, h('span', {}, 'paragraphs')),
+      h('div', { class: 'sheet-count', title: 'Different paragraphs this galaxy can make' }, countEl, countLabel = h('span', {}, 'paragraphs')),
       h('button', { class: 'icon-btn', 'aria-label': 'Close galaxy', onclick: close }, icon('close'))),
     paraEl,
     partsEl,
@@ -148,7 +148,9 @@ function render() {
   addSel.disabled = !addSel.options.length;
   if (!addSel.options.length) addSel.append(h('option', {}, 'Save a constellation in the Forge first'));
 
-  countEl.textContent = formatBig(g.parts.length ? countParagraph(g.parts, g.joins, state.words, derived.orbit) : 0);
+  const np = g.parts.length ? countParagraph(g.parts, g.joins, state.words, derived.orbit) : 0;
+  countEl.textContent = formatBig(np);
+  countLabel.textContent = np === 1 ? 'paragraph' : 'paragraphs';
   app.space.setPath(pathIds());
 }
 

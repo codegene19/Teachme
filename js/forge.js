@@ -14,7 +14,7 @@ import { chime, arpeggio, speak, unlockAudio, errorSound } from './sfx.js';
 import { speechOpts } from './panels.js';
 
 const root = $('#forge');
-let chipsEl, sentenceEl, mathEl, countEl, nameInput, textInput, endEls, saveBtn, editTag, hintEl;
+let chipsEl, sentenceEl, mathEl, countEl, countLabel, nameInput, textInput, endEls, saveBtn, editTag, hintEl;
 let popIndex = -1;
 let wheelAcc = 0;
 let prevSurface = [];
@@ -59,7 +59,7 @@ export function initForge() {
   root.replaceChildren(
     h('div', { class: 'sheet-head' },
       h('div', { class: 'sheet-title' }, h('span', { class: 'kicker' }, icon('forge', 14), 'Forge'), nameInput, editTag),
-      h('div', { class: 'sheet-count', title: 'Different sentences this pattern can make' }, countEl, h('span', {}, 'sentences')),
+      h('div', { class: 'sheet-count', title: 'Different sentences this pattern can make' }, countEl, countLabel = h('span', {}, 'sentences')),
       h('button', { class: 'icon-btn', 'aria-label': 'Close forge', onclick: close }, icon('close'))),
     chipsEl,
     sentenceEl,
@@ -83,14 +83,14 @@ export function initForge() {
 
 export const isOpen = () => !root.hidden;
 
-export function open() {
+export function open({ fit = true } = {}) {
   app.galaxy?.close();
   root.hidden = false;
   document.body.classList.add('sheet-open');
   render();
   requestAnimationFrame(() => root.classList.add('in'));
   app.onSheetChange?.();
-  if (F().tokens.length) setTimeout(() => app.space.fitIds(F().tokens.map((t) => t.wordId), { maxZ: 1.25 }), 30);
+  if (F().tokens.length) { if (fit) setTimeout(() => app.space.fitIds(F().tokens.map((t) => t.wordId), { maxZ: 1.25 }), 30); }
   else if (window.matchMedia('(pointer: fine)').matches) textInput.focus();
 }
 
@@ -136,6 +136,7 @@ function render() {
 
   const n = countTokens(f.tokens, state.words, derived.orbit);
   countEl.textContent = formatBig(n);
+  countLabel.textContent = n === 1 ? 'sentence' : 'sentences';
   const fp = formulaParts(f.tokens, state.words, derived.orbit);
   if (fp.length) {
     fill(mathEl, 
@@ -155,7 +156,7 @@ function renderHint() {
   const vars = f.tokens.filter((t) => t.var).length;
   let msg = '';
   if (!f.tokens.length) msg = '';
-  else if (f.tokens.length < 2) msg = 'Add more words: tap a star, then “Add to sentence” — or type.';
+  else if (f.tokens.length < 2) msg = 'Add more words: double-click a star on the map, or type.';
   else if (!vars) msg = 'Tip: tap any word above → “Make variable”.';
   else if (state.stats.swaps < 3) msg = 'Click a coloured word in the sentence to swap it. Scroll over a variable to spin it.';
   else if (f.tokens.some((t) => t.var && slotOf(t, state.words) === 'who') && f.tokens.some((t) => wordOf(t)?.forms) && state.stats.swaps < 25)
@@ -167,7 +168,7 @@ function renderHint() {
 function emptyState() {
   const sighted = blueprints().filter((bp) => state.sighted[bp.id] && resolveBlueprint(bp));
   return h('div', { class: 'chips-empty' },
-    h('p', {}, 'An empty forge. Tap a lit star and choose ', h('b', {}, '“Add to sentence”'), ', or type a sentence below.'),
+    h('p', {}, h('b', {}, 'Double-click any star'), ' on the map to add it here (double-tap on a phone), or type a sentence below.'),
     sighted.length ? h('div', { class: 'row wrap' },
       h('span', { class: 'field-label' }, 'Sighted constellations:'),
       sighted.map((bp) => h('button', { class: 'mini-chip', onclick: () => loadBlueprint(bp) }, '✧ ', bp.name))) : null);
@@ -322,14 +323,16 @@ function removeToken(i) {
   commit();
 }
 
-export function addWordToken(id) {
+/** Append a star to the sentence. From the map the camera stays put, so you can keep double-clicking. */
+export function addWordToken(id, { fromMap = false } = {}) {
   const w = state.words[id];
   if (!w) return;
-  if (!w.lit) ignite(id);
+  if (!w.lit) ignite(id, { quiet: fromMap });
   F().tokens.push({ wordId: id, var: false });
   unlockAudio();
   chime(w.cat, { gain: 0.4, dur: 1 });
-  if (!isOpen()) open();
+  if (fromMap) app.space.ripple(id);
+  if (!isOpen()) open({ fit: !fromMap });
   commit();
   chipEl(F().tokens.length - 1)?.classList.add('swapped');
 }

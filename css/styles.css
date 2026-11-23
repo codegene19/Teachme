@@ -475,6 +475,8 @@ body.sheet-open .caption { display: none; }
   transform: translate(-50%, 14px);
 }
 .sheet.in { opacity: 1; transform: translate(-50%, 0); }
+/* when a panel is taller than its cap it scrolls; its contents never get squashed */
+.sheet > * { flex-shrink: 0; }
 @media (min-width: 1200px) {
   /* stay clear of the mission/toast column on the left */
   .sheet { width: min(860px, calc(100vw - 600px)); }
@@ -873,7 +875,9 @@ body.drifting .hud, body.drifting .dock, body.drifting .mission-card, body.drift
   .dock-btn { min-width: 0; flex: 1 1 0; padding: 0 6px; height: 48px; }
   .dock-l { font-size: 10px; }
   .dock-fit { flex: 0 0 40px; }
-  .sheet { max-height: 62vh; padding: 14px 14px 12px; border-radius: 18px; gap: 11px; }
+  /* leave enough sky above the panel to double-tap stars into the sentence */
+  .sheet { max-height: 48vh; padding: 14px 14px 12px; border-radius: 18px; gap: 11px; }
+  body.sheet-open .toast-body { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .sheet-head { flex-wrap: wrap; row-gap: 4px; }
   .sheet-title { order: 1; flex-basis: calc(100% - 52px); }
   .sheet-head > .icon-btn { order: 2; }
@@ -954,7 +958,8 @@ body.drifting .hud, body.drifting .dock, body.drifting .mission-card, body.drift
 }
 .w.var.glossed .w-g { color: color-mix(in srgb, var(--c) 60%, var(--dim)); }
 .sentence, .paragraph { row-gap: 6px; }
-.sentence:has(.glossed), .paragraph:has(.glossed) { line-height: 1.75; }
+/* glosses hang below the baseline: give them room before the next line */
+.sentence:has(.glossed), .paragraph:has(.glossed) { line-height: 1.75; padding-bottom: 0.5em; }
 .w.reflow .w-t, .w.reflow:not(.glossed), .chip.reflow .chip-word { animation: reflow 1.1s ease; }
 @keyframes reflow {
   0% { color: #fff; text-shadow: 0 0 24px #fff, 0 0 40px var(--accent); }

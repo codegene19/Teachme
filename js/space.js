@@ -513,6 +513,10 @@ export function createSpace(canvas, handlers = {}) {
   const pointers = new Map();
   let drag = null;
   let pinch = null;
+  // Double-click / double-tap, detected by hand so it works with fingers too.
+  let lastTap = null;
+  let pendingTap = null;
+  const DOUBLE_MS = 380, DOUBLE_PX = 26;
 
   canvas.addEventListener('pointerdown', (e) => {
     if (mode === 'genesis') return;
@@ -581,9 +585,22 @@ export function createSpace(canvas, handlers = {}) {
     canvas.classList.remove('grabbing');
     if (!drag.moved && e.type === 'pointerup') {
       const hit = hitTest(e.clientX, e.clientY);
-      if (hit) {
+      const now = performance.now();
+      const isDouble = !!lastTap && now - lastTap.t < DOUBLE_MS && lastTap.id === hit
+        && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_PX;
+      lastTap = isDouble ? null : { t: now, x: e.clientX, y: e.clientY, id: hit };
+      clearTimeout(pendingTap);
+      if (hit && isDouble) handlers.onStarDouble?.(hit);
+      else if (hit) {
         const w = state.words[hit];
-        if (w.lit) handlers.onStar?.(hit); else handlers.onUnlit?.(hit);
+        if (!w.lit) handlers.onUnlit?.(hit);
+        // On a phone the star card slides over the map; hold it back for a
+        // moment so a second tap can still reach the star.
+        else if (e.pointerType === 'mouse') handlers.onStar?.(hit);
+        else pendingTap = setTimeout(() => handlers.onStar?.(hit), DOUBLE_MS);
+      } else if (isDouble) {
+        const [wx, wy] = s2w(e.clientX, e.clientY);
+        flyTo(wx, wy, cam.z * 1.8, 600);
       } else handlers.onBackground?.();
     } else if (performance.now() - drag.lt < 80 && Math.hypot(drag.vx, drag.vy) > 0.15) {
       inertia = { vx: drag.vx, vy: drag.vy };
@@ -602,11 +619,6 @@ export function createSpace(canvas, handlers = {}) {
     zoomAt(e.clientX, e.clientY, cam.z * Math.exp(-e.deltaY * k));
   }, { passive: false });
 
-  canvas.addEventListener('dblclick', (e) => {
-    if (mode === 'genesis') return;
-    const [wx, wy] = s2w(e.clientX, e.clientY);
-    flyTo(wx, wy, cam.z * 1.8, 600);
-  });
 
   // --------------------------------------------------------------- API
   function flyTo(x, y, z = cam.z, dur = 1000, done) {

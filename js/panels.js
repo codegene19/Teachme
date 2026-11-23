@@ -170,7 +170,7 @@ function renderCard() {
         },
       }, n.lit ? null : h('span', { class: 'spark' }, '✧'), n.text)))) : null,
     h('div', { class: 'card-actions' },
-      h('button', { class: 'btn primary', onclick: () => app.forge.addWord(w.id) }, icon('plus', 16), 'Add to sentence'),
+      h('button', { class: 'btn primary', title: 'Tip: double-click a star on the map to add it in one go', onclick: () => app.forge.addWord(w.id) }, icon('plus', 16), 'Add to sentence'),
       w.cat === 'uncharted' ? h('button', { class: 'btn', onclick: () => classify([w.id]) }, 'Give it a sector') : null,
       !w.seed ? h('button', { class: 'btn ghost', onclick: () => editWordDialog(w.id) }, icon('edit', 16), 'Edit') : null));
 }
