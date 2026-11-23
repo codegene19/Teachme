@@ -79,6 +79,12 @@ export default {
       w('un dilema', 'thing', 'a dilemma'), w('los matices', 'thing', 'the nuances'), w('el punto de vista', 'thing', 'the point of view'),
     ],
   },
+  // the scene of each place: generated sentences only put things where they belong
+  places: {
+    'aquí': 'any', 'allí': 'any', 'en casa': 'home', 'en el trabajo': 'work', 'en la oficina': 'work', 'en el centro': 'city', 'en la ciudad': 'city',
+    'en el bar': 'cafe', 'en el restaurante': 'cafe', 'en la playa': 'outdoor', 'en el parque': 'outdoor', 'en España': 'travel', 'en Madrid': 'travel',
+    'en el extranjero': 'travel', 'en la estación': 'station', 'en la biblioteca': 'library', 'en el supermercado': 'shop', 'en el gimnasio': 'gym',
+  },
   kinds: {
     'una manzana': 'food', 'queso': 'food', 'leche': 'drink', 'vino': 'drink', 'un té': 'drink',
     'un coche': 'transport', 'un teléfono': 'item', 'las llaves': 'item', 'un trabajo': 'goal', 'una casa': 'room',

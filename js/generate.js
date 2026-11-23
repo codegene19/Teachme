@@ -20,6 +20,19 @@ function weighted(list) {
 
 const tenseOf = (id) => state.words[id]?.tense || 'pres';
 
+// Where each kind of thing plausibly happens. Places tagged 'any' (here, there) always fit.
+const SCENES = {
+  food: 'home cafe outdoor city travel shop', drink: 'home cafe outdoor city travel shop',
+  read: 'home library work outdoor cafe station', watch: 'home city cafe travel outdoor', listen: 'home cafe city outdoor gym',
+  lesson: 'home library work', person: 'home cafe city outdoor travel work station gym', time: 'home work',
+  money: 'home work shop city', ticket: 'station city travel home', transport: 'station city travel',
+  room: 'home travel city cafe', place: 'city travel', lang: 'home library travel work', info: 'home work city library station',
+  idea: 'home work cafe city', decision: 'home work cafe city', issue: 'home work cafe city', goal: 'home work cafe city',
+  truth: 'home outdoor travel library', chance: 'work travel city', item: 'home work shop city station',
+  errand: 'home shop city', trip: 'home work travel',
+};
+const fitsScene = (kind, place) => !kind || !place.scene || place.scene === 'any' || (SCENES[kind] || '').split(' ').includes(place.scene);
+
 /**
  * One random sentence. `who` keeps the subject; `tense` keeps every time word
  * in the same tense family, so a story stays in one timeline.
@@ -56,6 +69,19 @@ export function randomSentence({ who = null, tense = null, statementsOnly = fals
       }
       if (verb) {
         const fit = opts.filter((id) => verb.obj.includes(W[id].kind));
+        if (fit.length) opts = fit;
+      }
+    }
+    if (slot === 'place') {
+      // the place must suit the thing in this clause (a ticket at the station, not at the gym)
+      let thing = null;
+      for (let j = tokens.length - 1; j >= 0 && !thing; j--) {
+        const w = W[tokens[j].wordId];
+        if (w?.cat === 'link') break;
+        if (w?.cat === 'thing') thing = w;
+      }
+      if (thing) {
+        const fit = opts.filter((id) => fitsScene(thing.kind, W[id]));
         if (fit.length) opts = fit;
       }
     }

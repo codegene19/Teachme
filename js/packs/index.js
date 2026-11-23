@@ -16,7 +16,7 @@ function withExtra(pack, extra) {
   const levels = pack.levels.map((L, i) => ({ ...L, words: [...L.words, ...(extra.levels[i + 1] || []).map((w) => ({ ...w, extra: true }))] }));
   const objects = { ...pack.semantics.objects };
   for (const [verb, kinds] of Object.entries(extra.objects)) objects[verb] = objects[verb] ? `${objects[verb]} ${kinds}` : kinds;
-  return { ...pack, levels, semantics: { ...pack.semantics, kinds: { ...pack.semantics.kinds, ...extra.kinds }, objects } };
+  return { ...pack, levels, semantics: { ...pack.semantics, kinds: { ...pack.semantics.kinds, ...extra.kinds }, objects, places: extra.places || {} } };
 }
 
 function prepare(pack) {
@@ -27,6 +27,7 @@ function prepare(pack) {
     ...(sem.kinds[w.t] ? { k: sem.kinds[w.t] } : {}),
     ...(sem.objects[w.t] ? { o: sem.objects[w.t].split(' ') } : {}),
     ...(sem.modalActs?.[w.t] ? { acts: sem.modalActs[w.t].split(' ') } : {}),
+    ...(sem.places?.[w.t] ? { sc: sem.places[w.t] } : {}),
   })));
   const blueprints = pack.levels.flatMap((L, i) => (L.patterns || []).map((p) => ({ ...p, l: i + 1 })));
   const genesis = pack.levels[0].words.filter((w) => w.c !== 'core').map((w) => w.t);

@@ -58,7 +58,7 @@ Italian and Spanish each hold about 275 high-frequency words in 20 levels (11–
 - **Write a story** (Galaxy, `T`) builds a short paragraph: one subject, one timeline, joined by your bridge words.
 - **Drift** mixes generated sentences and stories with your saved ones, so it works from level 2 even if you haven't saved anything.
 
-Generated sentences only pair words that make sense together. Every noun has a kind (food, drink, reading, people, ideas, problems, goals…), and every verb lists the kinds it takes: you *mangi* food, *risolvi* problems, *cogli* opportunities, and *sapere* only takes skills (*so cucinare*). Spinning variables by hand stays free.
+Generated sentences only pair words that make sense together. Every noun has a kind (food, drink, reading, people, ideas, problems, goals…), and every verb lists the kinds it takes: you *mangi* food, *risolvi* problems, *cogli* opportunities, and *sapere* only takes skills (*so cucinare*). Places are matched too: every place has a scene (home, café, station, library, gym…), so generated sentences put tickets at the station and books at the library. Spinning variables by hand stays free.
 
 ### Grammar that stays correct
 

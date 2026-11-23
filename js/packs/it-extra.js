@@ -80,6 +80,12 @@ export default {
       w('un dilemma', 'thing', 'a dilemma'), w('le sfumature', 'thing', 'the nuances'), w('il punto di vista', 'thing', 'the point of view'),
     ],
   },
+  // the scene of each place: generated sentences only put things where they belong
+  places: {
+    qui: 'any', 'lì': 'any', 'a casa': 'home', 'al lavoro': 'work', 'in ufficio': 'work', 'in centro': 'city', 'in città': 'city',
+    'al bar': 'cafe', 'al ristorante': 'cafe', 'al mare': 'outdoor', 'al parco': 'outdoor', 'in Italia': 'travel', 'a Roma': 'travel',
+    "all'estero": 'travel', 'in stazione': 'station', 'in biblioteca': 'library', 'al supermercato': 'shop', 'in palestra': 'gym',
+  },
   kinds: {
     'una mela': 'food', 'il formaggio': 'food', 'il latte': 'drink', 'il vino': 'drink', 'un tè': 'drink',
     'una macchina': 'transport', 'un telefono': 'item', 'le chiavi': 'item', 'un lavoro': 'goal', 'una casa': 'room',

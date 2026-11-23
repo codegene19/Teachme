@@ -125,7 +125,7 @@ function addPackWords(s, p) {
       text: pw.t, cat: pw.c, lvl: pw.l || 0, gloss: pw.en || '',
       forms: pw.f || null, tenses: pw.ft || null, tense: pw.tense || null, num: pw.n || null, person: pw.p ?? null,
       also: pw.also || null, comma: !!pw.comma, joinComma: !!pw.joinComma, gal: p.levels ? galaxyIndex(pw.cefr) : 0,
-      kind: pw.k || null, obj: pw.o || null, acts: pw.acts || null,
+      kind: pw.k || null, obj: pw.o || null, acts: pw.acts || null, scene: pw.sc || null,
     };
     const ex = s.words[id];
     if (ex) {
