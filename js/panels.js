@@ -2,8 +2,9 @@
 
 import {
   state, derived, on, updateWord, deleteWord, addWord, addCategory, setSetting,
-  resetUniverse, exportUniverse, importUniverse, findWord,
+  resetUniverse, exportUniverse, importUniverse, findWord, pack,
 } from './store.js';
+import { PACKS, PACK_ORDER } from './packs/index.js';
 import { app, h, fill, $, icon, openModal, closeModal, toast } from './ui.js';
 import { speak, getVoices, speechSupported, setSoundEnabled } from './sfx.js';
 
@@ -82,6 +83,11 @@ function renderCard() {
     h('div', { class: 'card-word' },
       h('span', { class: 'card-text' }, w.text),
       h('button', { class: 'icon-btn speak-btn', 'aria-label': `Say “${w.text}”`, onclick: () => speak(w.text, speechOpts()) }, icon('speak', 20))),
+    w.gloss ? h('div', { class: 'card-gloss' }, w.forms ? `to ${w.gloss}` : w.gloss,
+      w.lvl ? h('span', { class: 'lvl-badge' }, `level ${w.lvl}`) : null) : null,
+    w.forms ? conjugation(w) : null,
+    w.num && w.num[0] !== w.num[1] ? h('div', { class: 'forms-row' },
+      h('span', {}, h('small', {}, 'one'), ' ', w.num[0]), h('span', {}, h('small', {}, 'many'), ' ', w.num[1])) : null,
     h('div', { class: 'mastery', title: m.next ? `${m.next - w.seen} more encounters to the next tier` : 'Fully mastered' },
       h('span', { class: 'mastery-name' }, `✦ ${m.name}`),
       h('span', { class: 'bar' }, h('i', { style: { width: `${m.pct}%` } })),
@@ -102,6 +108,17 @@ function renderCard() {
       h('button', { class: 'btn primary', onclick: () => app.forge.addWord(w.id) }, icon('plus', 16), 'Add to sentence'),
       w.cat === 'uncharted' ? h('button', { class: 'btn', onclick: () => classify([w.id]) }, 'Give it a sector') : null,
       !w.seed ? h('button', { class: 'btn ghost', onclick: () => editWordDialog(w.id) }, icon('edit', 16), 'Edit') : null));
+}
+
+// Present tense, one tap per form to hear it.
+function conjugation(w) {
+  const persons = pack()?.persons || ['1st', '2nd', '3rd', '1st pl.', '2nd pl.', '3rd pl.'];
+  return h('div', { class: 'conj' },
+    h('div', { class: 'field-label' }, 'Present tense — changes with the subject'),
+    h('div', { class: 'conj-grid' }, w.forms.map((f, i) => h('button', {
+      class: 'conj-cell', title: `Say “${persons[i].split(' / ')[0]} ${f}”`,
+      onclick: () => speak(`${persons[i].split(' / ')[0]} ${f}`, speechOpts()),
+    }, h('small', {}, persons[i]), h('b', {}, f)))));
 }
 
 // ---------------------------------------------------------- sector picker
@@ -142,7 +159,7 @@ function sectorPicker(selected, onPick, { allowNew = true, includeUncharted = fa
 
 // ----------------------------------------------------------- add a word
 export function addWordDialog({ text = '' } = {}) {
-  let cat = state.mode === 'english' ? 'thing' : null;
+  let cat = state.pack ? 'thing' : null;
   const input = h('input', { class: 'text-input big', placeholder: 'A word or short phrase', maxlength: 40, value: text, autofocus: true });
   const note = h('input', { class: 'text-input', placeholder: 'Meaning in your language (optional)', maxlength: 200 });
   const status = h('p', { class: 'form-status', 'aria-live': 'polite' });
@@ -305,11 +322,14 @@ export function settings() {
         toggle('Chimes', 'Every sector sings its own note.', state.settings.sound, (v) => { setSetting('sound', v); setSoundEnabled(v); }),
         toggle('Say new words aloud', 'Hear each word the moment you discover it.', state.settings.speakOnIgnite, (v) => setSetting('speakOnIgnite', v))),
       h('section', { class: 'set-group' },
+        h('h3', {}, 'Reading'),
+        toggle('Show English meanings', 'A small translation under each word in your sentences and on the map.', state.settings.gloss, (v) => { setSetting('gloss', v); app.forge?.render?.(); })),
+      h('section', { class: 'set-group' },
         h('h3', {}, 'Voice'),
         speechSupported()
           ? [h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speaking voice — pick one in the language you are learning'), voiceSel),
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed ', rateOut), rate),
-            h('button', { class: 'btn small', onclick: () => speak(state.mode === 'english' ? 'I want coffee now.' : 'Lexicosmos', speechOpts()) }, icon('speak', 16), 'Test voice')]
+            h('button', { class: 'btn small', onclick: () => speak(pack()?.hello || 'Lexicosmos', speechOpts()) }, icon('speak', 16), 'Test voice')]
           : h('p', { class: 'lede' }, 'Speech is not available in this browser.')),
       h('section', { class: 'set-group' },
         h('h3', {}, 'Universe'),
@@ -336,9 +356,10 @@ export function settings() {
           h('button', { class: 'btn ghost', onclick: () => { pasteBox.hidden = !pasteBox.hidden; if (!pasteBox.hidden) pasteArea.focus(); } }, 'Paste…'),
           file),
         pasteBox,
+        h('div', { class: 'field-label' }, 'Start over in another language (this erases your current universe):'),
         h('div', { class: 'row wrap' },
-          resetBtn('english', 'Restart: English starter universe'),
-          resetBtn('empty', 'Restart: empty universe (any language)'))),
+          PACK_ORDER.map((id) => resetBtn(id, `${PACKS[id].name}${id === state.pack ? ' (restart)' : ''}`)),
+          resetBtn('empty', 'Empty — any language'))),
       h('section', { class: 'set-group about' },
         h('h3', {}, 'Why this works'),
         h('p', {}, 'You don’t need fifty thousand words. You need a few dozen you truly own — and the patterns that let each one slide into a thousand sentences. Every sector is a slot; every slot multiplies. Five subjects × twelve actions × fourteen things × eight times is already 6,720 sentences.'))),

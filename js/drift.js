@@ -21,7 +21,7 @@ export function initDrift() {
 function randomize(tokens) {
   return tokens.map((t) => {
     if (!t.var) return { ...t };
-    return { ...t, wordId: pickRandom(optionsFor(t, state.words, derived.byCat)) || t.wordId };
+    return { ...t, wordId: pickRandom(optionsFor(t, state.words, derived.orbit)) || t.wordId };
   });
 }
 
@@ -32,13 +32,13 @@ function nextScene() {
   if (useGalaxy) {
     const g = pickRandom(gals);
     const parts = g.parts.map((p) => ({ ...p, tokens: randomize(p.tokens) }));
-    const links = derived.byCat.link || [];
+    const links = derived.orbit.link || [];
     const joins = g.joins.map((j) => (j && links.length ? pickRandom(links) : j));
     return { name: g.name, segs: paragraphSegments(parts, joins, state.words) };
   }
   const c = pickRandom(consts);
   const tokens = randomize(c.tokens);
-  const segs = sentenceSegments(tokens, state.words);
+  const segs = sentenceSegments(tokens, state.words, { end: c.end });
   segs.push({ kind: 'punct', text: c.end, sep: '' });
   return { name: c.name, segs };
 }
@@ -70,7 +70,7 @@ export async function start() {
     const spans = [];
     fill(textEl, ...scene.segs.flatMap((s) => {
       if (!s.wordId) return [h('span', { class: 'end' }, s.text)];
-      const c = state.categories[s.cat] || state.categories.uncharted;
+      const c = state.categories[s.slot] || state.categories[s.cat] || state.categories.uncharted;
       const el = h('span', { class: 'w' + (s.isVar || s.kind === 'join' ? ' var' : ''), style: { '--c': c.color } }, s.text);
       spans.push(el);
       return [s.sep, el];

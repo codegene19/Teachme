@@ -90,17 +90,26 @@ const KICKERS = {
   mission: '✦ Mission complete',
   sector: '◎ New sector discovered',
   sighting: '✧ Constellation sighted',
+  level: '▲ New level reached',
   info: '·',
   warn: '△ Notice',
 };
+
+const PRIORITY = { level: 4, sighting: 3, sector: 2, signal: 2, mission: 1, warn: 2, info: 0 };
 
 export function toast({ kind = 'signal', title, body, action, timeout = 6000, color } = {}) {
   const box = $('#toasts');
   if (!box) return;
   const max = window.innerWidth < 720 ? 2 : 3;
-  while (box.children.length >= max) box.firstElementChild.remove();
+  // When full, drop the oldest of the least important notices — a level-up
+  // should never be pushed out by a routine one.
+  while (box.children.length >= max) {
+    const all = [...box.children];
+    const low = Math.min(...all.map((t) => Number(t.dataset.p)));
+    all.find((t) => Number(t.dataset.p) === low).remove();
+  }
   let timer = null;
-  const el = h('div', { class: `toast toast-${kind}`, role: 'status', style: color ? { '--c': color } : null },
+  const el = h('div', { class: `toast toast-${kind}`, role: 'status', 'data-p': String(PRIORITY[kind] ?? 1), style: color ? { '--c': color } : null },
     h('div', { class: 'toast-kicker' }, KICKERS[kind] || ''),
     title && h('div', { class: 'toast-title' }, title),
     body && h('div', { class: 'toast-body' }, body),

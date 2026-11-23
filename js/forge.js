@@ -3,10 +3,12 @@
 
 import {
   state, derived, on, commit, persist, ignite, addWord, bumpSeen, bumpStat,
-  saveConstellation, resolveBlueprint, cosmicName, markHint, emptyForge, cloneTokens,
+  saveConstellation, resolveBlueprint, cosmicName, markHint, emptyForge, cloneTokens, blueprints, resolveText, pack,
 } from './store.js';
-import { BLUEPRINTS } from './seed.js';
-import { sentenceSegments, sentenceText, countTokens, formatBig, parseInput, formulaParts, pickRandom, optionsFor } from './language.js';
+import {
+  sentenceSegments, sentenceText, countTokens, formatBig, parseInput, formulaParts, pickRandom, optionsFor,
+  personAt, surface, slotOf,
+} from './language.js';
 import { app, h, fill, $, icon, toast, showPopover, hidePopover, isPopoverOpen } from './ui.js';
 import { chime, arpeggio, speak, unlockAudio, errorSound } from './sfx.js';
 import { speechOpts } from './panels.js';
@@ -15,10 +17,24 @@ const root = $('#forge');
 let chipsEl, sentenceEl, mathEl, countEl, nameInput, textInput, endEls, saveBtn, editTag, hintEl;
 let popIndex = -1;
 let wheelAcc = 0;
+let prevSurface = [];
 
 const F = () => state.forge;
 const wordOf = (t) => state.words[t.wordId];
-const catOfTok = (t) => state.categories[wordOf(t)?.cat] || state.categories.uncharted;
+const catOfTok = (t) => state.categories[slotOf(t, state.words)] || state.categories.uncharted;
+const surfaceAt = (i, id) => {
+  const toks = F().tokens;
+  const t = id ? { ...toks[i], wordId: id } : toks[i];
+  const probe = id ? toks.map((x, k) => (k === i ? t : x)) : toks;
+  return surface(state.words[t.wordId], t, personAt(probe, state.words, i));
+};
+
+/** A word in the sentence, with its English gloss underneath when enabled. */
+export function glossed(text, gloss, attrs = {}, tag = 'span') {
+  if (!state.settings.gloss || !gloss) return h(tag, attrs, text);
+  attrs.class = `${attrs.class || ''} glossed`;
+  return h(tag, attrs, h('span', { class: 'w-t' }, text), h('span', { class: 'w-g', 'aria-hidden': 'true' }, gloss));
+}
 
 export function initForge() {
   nameInput = h('input', {
@@ -100,14 +116,27 @@ function render() {
 
   fill(chipsEl, ...(f.tokens.length ? f.tokens.map(chip) : [emptyState()]));
 
-  const segs = sentenceSegments(f.tokens, state.words);
-  fill(sentenceEl, 
-    ...segs.flatMap((s) => [s.sep, wordSpan(s)]),
+  const segs = sentenceSegments(f.tokens, state.words, { end: f.end });
+  fill(sentenceEl,
+    ...segs.flatMap((s) => [s.sep, s.kind === 'punct' ? h('span', { class: 'end' }, s.text) : wordSpan(s)]),
     segs.length ? h('span', { class: 'end' }, f.end) : h('span', { class: 'placeholder' }, 'Your sentence will appear here.'));
+  // Words that changed form without changing star (a verb re-conjugating
+  // because the subject moved) get a soft glow.
+  const nowSurface = [];
+  for (const s of segs) {
+    if (s.kind !== 'word') continue;
+    nowSurface[s.index] = { id: s.wordId, text: s.text.toLowerCase() };
+    const was = prevSurface[s.index];
+    if (was && was.id === s.wordId && was.text !== nowSurface[s.index].text) {
+      sentenceEl.querySelector(`[data-i="${s.index}"]`)?.classList.add('reflow');
+      chipEl(s.index)?.classList.add('reflow');
+    }
+  }
+  prevSurface = nowSurface;
 
-  const n = countTokens(f.tokens, state.words, derived.byCat);
+  const n = countTokens(f.tokens, state.words, derived.orbit);
   countEl.textContent = formatBig(n);
-  const fp = formulaParts(f.tokens, state.words, derived.byCat);
+  const fp = formulaParts(f.tokens, state.words, derived.orbit);
   if (fp.length) {
     fill(mathEl, 
       ...fp.flatMap((p, i) => [i ? h('span', { class: 'x' }, '×') : null, h('span', { class: 'factor', style: { '--c': state.categories[p.cat]?.color } }, String(p.n))]),
@@ -129,12 +158,14 @@ function renderHint() {
   else if (f.tokens.length < 2) msg = 'Add more words: tap a star, then “Add to sentence” — or type.';
   else if (!vars) msg = 'Tip: tap any word above → “Make variable”.';
   else if (state.stats.swaps < 3) msg = 'Click a coloured word in the sentence to swap it. Scroll over a variable to spin it.';
+  else if (f.tokens.some((t) => t.var && slotOf(t, state.words) === 'who') && f.tokens.some((t) => wordOf(t)?.forms) && state.stats.swaps < 25)
+    msg = 'Spin WHO and watch the verb change with it — that’s conjugation.';
   hintEl.textContent = msg;
   hintEl.hidden = !msg;
 }
 
 function emptyState() {
-  const sighted = BLUEPRINTS.filter((bp) => state.sighted[bp.id] && resolveBlueprint(bp));
+  const sighted = blueprints().filter((bp) => state.sighted[bp.id] && resolveBlueprint(bp));
   return h('div', { class: 'chips-empty' },
     h('p', {}, 'An empty forge. Tap a lit star and choose ', h('b', {}, '“Add to sentence”'), ', or type a sentence below.'),
     sighted.length ? h('div', { class: 'row wrap' },
@@ -145,11 +176,13 @@ function emptyState() {
 function chip(t, i) {
   const w = wordOf(t);
   const c = catOfTok(t);
-  const opts = optionsFor(t, state.words, derived.byCat);
+  const opts = optionsFor(t, state.words, derived.orbit);
+  const shown = surfaceAt(i);
   const el = h('button', {
     class: `chip ${t.var ? 'chip-var' : 'chip-fixed'}${w.cat === 'uncharted' ? ' chip-uncharted' : ''}`,
     style: { '--c': c.color }, draggable: 'true', 'data-i': String(i), role: 'listitem',
-    'aria-label': t.var ? `Variable ${c.label}, currently ${w.text}, ${opts.length} options` : `Fixed word ${w.text}`,
+    title: [w.forms || w.num ? w.text : '', w.gloss].filter(Boolean).join(' — ') || null,
+    'aria-label': t.var ? `Variable ${c.label}, currently ${shown}, ${opts.length} options` : `Fixed word ${shown}`,
     onclick: (e) => openChipMenu(i, e.currentTarget),
     ondragstart: (e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; el.classList.add('dragging'); hidePopover(); },
     ondragend: () => el.classList.remove('dragging'),
@@ -157,8 +190,10 @@ function chip(t, i) {
     ondragleave: () => el.classList.remove('drop'),
     ondrop: (e) => { e.preventDefault(); el.classList.remove('drop'); const from = Number(e.dataTransfer.getData('text/plain')); if (Number.isInteger(from)) moveToken(from, i); },
   },
-  h('span', { class: 'chip-cat' }, t.var ? h('span', { class: 'orb' }) : null, t.var ? `${c.label} · ${opts.length}` : (w.cat === 'uncharted' ? '? no sector' : c.label)),
-  h('span', { class: 'chip-word' }, w.text));
+  h('span', { class: 'chip-cat' }, t.var ? h('span', { class: 'orb' }) : null,
+    t.var ? `${c.label} · ${opts.length}` : (w.cat === 'uncharted' ? '? no sector' : c.label),
+    w.forms && t.inf ? h('span', { class: 'inf-tag' }, 'inf') : null),
+  h('span', { class: 'chip-word' }, shown));
   if (t.var) {
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -170,13 +205,13 @@ function chip(t, i) {
 }
 
 function wordSpan(s) {
-  const c = state.categories[s.cat] || state.categories.uncharted;
-  if (!s.isVar) return h('span', { class: 'w', 'data-i': String(s.index) }, s.text);
-  return h('button', {
+  const c = state.categories[s.slot] || state.categories[s.cat] || state.categories.uncharted;
+  if (!s.isVar) return glossed(s.text, s.gloss, { class: 'w', 'data-i': String(s.index) });
+  return glossed(s.text, s.gloss, {
     class: 'w var', 'data-i': String(s.index), style: { '--c': c.color },
     title: `${c.label} — click for next, Shift+click for previous`,
     onclick: (e) => cycle(s.index, e.shiftKey ? -1 : 1),
-  }, s.text);
+  }, 'button');
 }
 
 const chipEl = (i) => chipsEl.querySelector(`[data-i="${i}"]`);
@@ -188,15 +223,18 @@ function openChipMenu(i, anchor) {
   popIndex = i;
   const w = wordOf(t);
   const c = catOfTok(t);
-  const opts = optionsFor(t, state.words, derived.byCat);
+  const opts = optionsFor(t, state.words, derived.orbit);
   const body = h('div', { class: 'pop-body', style: { '--c': c.color } },
     h('div', { class: 'pop-head' }, h('i', { class: 'dot' }), h('b', {}, c.label), h('span', { class: 'dim' }, `${c.sector} · ${opts.length} lit`)),
     t.var
       ? h('div', { class: 'orbit-options' }, opts.map((id) => h('button', {
         class: 'opt' + (id === t.wordId ? ' active' : ''),
+        title: state.words[id].gloss || null,
         onclick: () => { setValue(i, id); refreshMenu(); },
-      }, state.words[id].text)))
+      }, surfaceAt(i, id), state.settings.gloss && state.words[id].gloss ? h('small', {}, state.words[id].gloss) : null)))
       : null,
+    w.forms ? h('p', { class: 'pop-note' }, h('b', {}, w.text), ` (${w.gloss}) — `,
+      t.inf ? 'shown in the infinitive, as it follows another verb.' : `conjugated for ${personLabel(personAt(F().tokens, state.words, i))}.`) : null,
     w.cat === 'uncharted' ? h('p', { class: 'pop-note' }, 'This star has no sector yet — give it one so it can become a variable.') : null,
     !t.var && w.cat !== 'uncharted' && opts.length < 2
       ? h('p', { class: 'pop-note' }, `Only one ${c.label} star is lit so far. Discover more to make this spin.`) : null,
@@ -205,11 +243,17 @@ function openChipMenu(i, anchor) {
         ? h('button', { class: 'btn small accent', onclick: () => { hidePopover(); app.panels.classify([w.id]); } }, 'Give it a sector')
         : h('button', { class: `btn small ${t.var ? '' : 'accent'}`, onclick: () => { toggleVar(i); refreshMenu(); } },
           icon(t.var ? 'pin' : 'orbit', 16), t.var ? 'Make fixed' : `Make variable · ${opts.length}`),
+      w.forms ? h('button', { class: 'btn small ghost', onclick: () => { t.inf = !t.inf; commit(); refreshMenu(); } }, t.inf ? 'Conjugate' : 'Infinitive') : null,
       h('span', { class: 'grow' }),
       h('button', { class: 'icon-btn small', 'aria-label': 'Move left', disabled: i === 0, onclick: () => { moveToken(i, i - 1); popIndex = -1; openChipMenu(i - 1, chipEl(i - 1)); } }, icon('left', 16)),
       h('button', { class: 'icon-btn small', 'aria-label': 'Move right', disabled: i === F().tokens.length - 1, onclick: () => { moveToken(i, i + 1); popIndex = -1; openChipMenu(i + 1, chipEl(i + 1)); } }, icon('right', 16)),
       h('button', { class: 'icon-btn small danger', 'aria-label': 'Remove word', onclick: () => { hidePopover(); removeToken(i); } }, icon('trash', 16))));
   showPopover(anchor || chipEl(i), body, { onClose: () => { popIndex = -1; } });
+}
+
+function personLabel(p) {
+  const persons = pack()?.persons;
+  return persons ? `“${persons[p]}”` : 'the subject';
 }
 
 function refreshMenu() {
@@ -230,6 +274,7 @@ function setValue(i, id) {
   if (!t || t.wordId === id) return;
   t.wordId = id;
   bumpStat('swaps');
+  bumpStat('made');
   bumpSeen([id]);
   unlockAudio();
   chime(state.words[id].cat, { gain: 0.4, dur: 0.9 });
@@ -241,7 +286,7 @@ function setValue(i, id) {
 function cycle(i, dir) {
   const t = F().tokens[i];
   if (!t) return;
-  const opts = optionsFor(t, state.words, derived.byCat);
+  const opts = optionsFor(t, state.words, derived.orbit);
   if (opts.length < 2) {
     errorSound();
     toast({ kind: 'info', title: 'Nothing to swap yet', body: `Discover another ${catOfTok(t).label} star and this variable will spin.` });
@@ -255,6 +300,7 @@ function toggleVar(i) {
   const t = F().tokens[i];
   if (!t) return;
   t.var = !t.var;
+  if (t.var && !t.slot) t.slot = wordOf(t).cat;
   unlockAudio();
   chime(wordOf(t).cat, { gain: 0.45, dur: 1.4, shift: t.var ? 5 : 0 });
   commit();
@@ -289,7 +335,7 @@ export function addWordToken(id) {
 }
 
 function submitText(text) {
-  const { tokens, end } = parseInput(text, derived.byText);
+  const { tokens, end } = parseInput(text, resolveText);
   if (!tokens.length) return;
   unlockAudio();
   const created = [];
@@ -305,7 +351,10 @@ function submitText(text) {
       id = w.id;
       if (w.cat === 'uncharted') created.push(id);
     }
-    F().tokens.push({ wordId: id, var: false });
+    const tk = { wordId: id, var: false };
+    if (tok.inf) tk.inf = true;
+    if (tok.person != null) tk.person = tok.person;
+    F().tokens.push(tk);
   });
   if (end) F().end = end;
   commit();
@@ -322,10 +371,11 @@ export function shuffle() {
     return;
   }
   for (const [t] of vars) {
-    const next = pickRandom(optionsFor(t, state.words, derived.byCat), t.wordId);
+    const next = pickRandom(optionsFor(t, state.words, derived.orbit), t.wordId);
     if (next) t.wordId = next;
   }
   bumpStat('shuffles');
+  bumpStat('made');
   bumpStat('swaps', vars.length);
   bumpSeen(f.tokens.map((t) => t.wordId));
   unlockAudio();
@@ -340,7 +390,7 @@ export function shuffle() {
 function speakNow() {
   const f = F();
   if (!f.tokens.length) return;
-  const segs = sentenceSegments(f.tokens, state.words);
+  const segs = sentenceSegments(f.tokens, state.words, { end: f.end });
   const text = sentenceText(f.tokens, state.words, f.end);
   const starts = [];
   let pos = 0;
@@ -356,6 +406,7 @@ function speakNow() {
     onBoundary: (ci) => { let k = 0; starts.forEach((st, j) => { if (st <= ci) k = j; }); mark(k); },
   }).then(() => { sentenceEl.classList.remove('speaking'); mark(-1); });
   bumpStat('spoken');
+  bumpStat('made');
   bumpSeen(f.tokens.map((t) => t.wordId));
   commit();
 }
@@ -371,7 +422,7 @@ function save() {
   commit();
   unlockAudio();
   arpeggio(f.tokens.map((t) => wordOf(t).cat), 0.06);
-  const n = countTokens(f.tokens, state.words, derived.byCat);
+  const n = countTokens(f.tokens, state.words, derived.orbit);
   toast({
     kind: 'signal', title: `${editing ? 'Updated' : 'New constellation'}: ${name}`,
     body: `${formatBig(n)} sentence${n === 1 ? '' : 's'} from one pattern. ${formatBig(derived.reach)} now within your reach.`,

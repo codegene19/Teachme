@@ -12,12 +12,13 @@ import {
 import { app, h, fill, $, icon, toast, showPopover, hidePopover } from './ui.js';
 import { chime, arpeggio, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
+import { glossed } from './forge.js';
 
 const root = $('#galaxy');
 let paraEl, partsEl, countEl, nameInput, addSel, saveBtn, editTag;
 
 const G = () => state.galaxyDraft;
-const linkOptions = () => [null, ...(derived.byCat.link || [])];
+const linkOptions = () => [null, ...(derived.orbit.link || [])];
 
 export function initGalaxy() {
   nameInput = h('input', {
@@ -100,18 +101,18 @@ function render() {
   } else {
     fill(paraEl, ...segs.flatMap((s) => {
       if (s.kind === 'punct') return [h('span', { class: 'end' }, s.text)];
-      if (s.kind === 'join') return [s.sep, h('button', { class: 'w var join', style: { '--c': state.categories.link.color }, onclick: () => cycleJoin(s.joinIndex, 1) }, s.text)];
-      const c = state.categories[s.cat] || state.categories.uncharted;
+      if (s.kind === 'join') return [s.sep, glossed(s.text, s.gloss, { class: 'w var join', style: { '--c': state.categories.link.color }, onclick: () => cycleJoin(s.joinIndex, 1) }, 'button')];
+      const c = state.categories[s.slot] || state.categories[s.cat] || state.categories.uncharted;
       return [s.sep, s.isVar
-        ? h('button', { class: 'w var', style: { '--c': c.color }, 'data-p': String(s.partIndex), 'data-i': String(s.index), onclick: (e) => cycleVar(s.partIndex, s.index, e.shiftKey ? -1 : 1) }, s.text)
-        : h('span', { class: 'w' }, s.text)];
+        ? glossed(s.text, s.gloss, { class: 'w var', style: { '--c': c.color }, 'data-p': String(s.partIndex), 'data-i': String(s.index), onclick: (e) => cycleVar(s.partIndex, s.index, e.shiftKey ? -1 : 1) }, 'button')
+        : glossed(s.text, s.gloss, { class: 'w' })];
     }));
   }
 
   // the list of parts with their links
   const items = [];
   g.parts.forEach((p, i) => {
-    const n = countTokens(p.tokens, state.words, derived.byCat);
+    const n = countTokens(p.tokens, state.words, derived.orbit);
     items.push(h('li', { class: 'part' },
       h('span', { class: 'part-n' }, String(i + 1)),
       h('div', { class: 'part-main' },
@@ -147,7 +148,7 @@ function render() {
   addSel.disabled = !addSel.options.length;
   if (!addSel.options.length) addSel.append(h('option', {}, 'Save a constellation in the Forge first'));
 
-  countEl.textContent = formatBig(g.parts.length ? countParagraph(g.parts, g.joins, state.words, derived.byCat) : 0);
+  countEl.textContent = formatBig(g.parts.length ? countParagraph(g.parts, g.joins, state.words, derived.orbit) : 0);
   app.space.setPath(pathIds());
 }
 
@@ -169,7 +170,7 @@ export function addPart(part) {
   const g = G();
   g.parts.push({ name: part.name || '', end: part.end || '.', tokens: cloneTokens(part.tokens) });
   if (g.parts.length > 1) {
-    const links = derived.byCat.link || [];
+    const links = derived.orbit.link || [];
     g.joins.push(links.length ? pickRandom(links) : null);
   }
   commit();
@@ -193,6 +194,7 @@ function setJoin(i, id) {
   G().joins[i] = id;
   if (id) { bumpSeen([id]); unlockAudio(); chime('link', { gain: 0.45 }); app.space.ripple(id); }
   bumpStat('swaps');
+  bumpStat('made');
   commit();
 }
 
@@ -205,11 +207,12 @@ function cycleJoin(i, dir) {
 function cycleVar(pi, ti, dir) {
   const t = G().parts[pi]?.tokens[ti];
   if (!t) return;
-  const opts = optionsFor(t, state.words, derived.byCat);
+  const opts = optionsFor(t, state.words, derived.orbit);
   if (opts.length < 2) return;
   const k = opts.indexOf(t.wordId);
   t.wordId = opts[(k + dir + opts.length) % opts.length];
   bumpStat('swaps');
+  bumpStat('made');
   bumpSeen([t.wordId]);
   unlockAudio();
   chime(state.words[t.wordId].cat, { gain: 0.4, dur: 0.9 });
@@ -222,7 +225,7 @@ function shufflePart(i, { quiet = false } = {}) {
   if (!p) return;
   for (const t of p.tokens) {
     if (!t.var) continue;
-    const next = pickRandom(optionsFor(t, state.words, derived.byCat), t.wordId);
+    const next = pickRandom(optionsFor(t, state.words, derived.orbit), t.wordId);
     if (next) t.wordId = next;
   }
   bumpSeen(p.tokens.map((t) => t.wordId));
@@ -233,9 +236,10 @@ function shuffleAll() {
   const g = G();
   if (!g.parts.length) return;
   g.parts.forEach((_, i) => shufflePart(i, { quiet: true }));
-  const links = derived.byCat.link || [];
+  const links = derived.orbit.link || [];
   g.joins = g.joins.map((j) => (Math.random() < 0.2 || !links.length ? null : pickRandom(links, j)));
   bumpStat('shuffles');
+  bumpStat('made');
   unlockAudio();
   arpeggio(pathIds().map((id) => state.words[id]?.cat), 0.06);
   commit();
@@ -258,6 +262,7 @@ function speakAll() {
   paraEl.classList.add('speaking');
   speak(paragraphText(g.parts, g.joins, state.words), speechOpts()).then(() => paraEl.classList.remove('speaking'));
   bumpStat('spoken');
+  bumpStat('made');
   bumpSeen(pathIds());
   commit();
 }
@@ -274,7 +279,7 @@ function save() {
   commit();
   unlockAudio();
   arpeggio(pathIds().map((id) => state.words[id]?.cat), 0.05);
-  toast({ kind: 'signal', title: `${editing ? 'Updated' : 'New galaxy'}: ${g.name}`, body: `${formatBig(countParagraph(g.parts, g.joins, state.words, derived.byCat))} possible paragraphs.` });
+  toast({ kind: 'signal', title: `${editing ? 'Updated' : 'New galaxy'}: ${g.name}`, body: `${formatBig(countParagraph(g.parts, g.joins, state.words, derived.orbit))} possible paragraphs.` });
 }
 
 function newDraft() {

@@ -2,17 +2,18 @@
 // Active recall built from your own constellations.
 
 import { state, derived, bumpSeen, bumpStat, commit } from './store.js';
-import { sentenceSegments, pickRandom, optionsFor } from './language.js';
+import { sentenceSegments, pickRandom, optionsFor, slotOf, surface, personAt } from './language.js';
 import { app, h, fill, icon, openModal, closeModal, toast } from './ui.js';
 import { arpeggio, chime, errorSound, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
+import { glossed } from './forge.js';
 
 export function initEclipse() {
   app.eclipse = { start, available };
 }
 
 function pool() {
-  return Object.values(state.constellations).filter((c) => c.tokens.some((t) => t.var && optionsFor(t, state.words, derived.byCat).length >= 2));
+  return Object.values(state.constellations).filter((c) => c.tokens.some((t) => t.var && optionsFor(t, state.words, derived.orbit).length >= 2));
 }
 export const available = () => pool().length > 0;
 
@@ -33,20 +34,23 @@ export function start() {
 
 function round() {
   const c = pickRandom(pool());
-  const tokens = c.tokens.map((t) => (t.var ? { ...t, wordId: pickRandom(optionsFor(t, state.words, derived.byCat)) || t.wordId } : { ...t }));
-  const candidates = tokens.map((t, i) => [t, i]).filter(([t]) => t.var && optionsFor(t, state.words, derived.byCat).length >= 2);
+  const tokens = c.tokens.map((t) => (t.var ? { ...t, wordId: pickRandom(optionsFor(t, state.words, derived.orbit)) || t.wordId } : { ...t }));
+  const candidates = tokens.map((t, i) => [t, i]).filter(([t]) => t.var && optionsFor(t, state.words, derived.orbit).length >= 2);
   const [hiddenTok, hiddenIdx] = pickRandom(candidates);
   const answer = hiddenTok.wordId;
-  const cat = state.categories[state.words[answer].cat];
-  const others = shuffled(optionsFor(hiddenTok, state.words, derived.byCat).filter((id) => id !== answer)).slice(0, 3);
+  const cat = state.categories[slotOf(hiddenTok, state.words)] || state.categories[state.words[answer].cat];
+  const person = personAt(tokens, state.words, hiddenIdx);
+  const formOf = (id) => surface(state.words[id], { ...hiddenTok, wordId: id }, person);
+  const others = shuffled(optionsFor(hiddenTok, state.words, derived.orbit).filter((id) => id !== answer)).slice(0, 3);
   const choices = shuffled([answer, ...others]);
-  const segs = sentenceSegments(tokens, state.words);
+  const segs = sentenceSegments(tokens, state.words, { end: c.end });
   const text = segs.map((s) => s.sep + s.text).join('') + c.end;
   let answered = false;
 
-  const hole = h('span', { class: 'eclipse-hole', style: { '--c': cat.color } }, h('span', { class: 'eclipse-disc' }), h('span', { class: 'eclipse-cat' }, cat.label));
+  const hint = state.settings.gloss && state.words[answer].gloss ? `“${state.words[answer].gloss}”` : cat.label;
+  const hole = h('span', { class: 'eclipse-hole', style: { '--c': cat.color } }, h('span', { class: 'eclipse-disc' }), h('span', { class: 'eclipse-cat' }, hint));
   const sentence = h('p', { class: 'sentence eclipse-sentence' },
-    ...segs.flatMap((s) => [s.sep, s.index === hiddenIdx ? hole : h('span', { class: 'w' }, s.text)]),
+    ...segs.flatMap((s) => [s.sep, s.kind === 'punct' ? h('span', { class: 'end' }, s.text) : s.index === hiddenIdx ? hole : glossed(s.text, s.gloss, { class: 'w' })]),
     h('span', { class: 'end' }, c.end));
   const status = h('p', { class: 'eclipse-status', 'aria-live': 'polite' }, 'Listen — which word is hidden in the shadow?');
   const streak = h('span', { class: 'pill' }, `streak ${state.stats.streak} · best ${state.stats.bestStreak}`);
@@ -54,7 +58,7 @@ function round() {
   const buttons = choices.map((id) => h('button', {
     class: 'eclipse-opt', style: { '--c': cat.color },
     onclick: () => pick(id),
-  }, state.words[id].text));
+  }, formOf(id)));
 
   function pick(id) {
     if (answered) return;
@@ -68,6 +72,7 @@ function round() {
     fill(hole, h('span', { class: 'w revealed', style: { '--c': cat.color } }, segs.find((s) => s.index === hiddenIdx).text));
     hole.classList.add('lit');
     bumpStat('eclipses');
+    bumpStat('made');
     if (right) {
       state.stats.streak++;
       state.stats.bestStreak = Math.max(state.stats.bestStreak, state.stats.streak);

@@ -36,6 +36,7 @@ export function createSpace(canvas, handlers = {}) {
   const sprites = new Map();
   const nebulas = new Map();
   const litAnim = new Map();
+  const arriveAnim = new Map(); // id -> time its meteor lands
   const nebulaAnim = new Map();
   const bgOff = { x: 0, y: 0 };
   let prevCam = { x: 0, y: 0 };
@@ -357,10 +358,17 @@ export function createSpace(canvas, handlers = {}) {
         ctx.globalAlpha = 0.9;
         ctx.drawImage(spr, sx - g2, sy - g2, g2 * 2, g2 * 2);
       } else {
+        let fade = 1;
+        const land = arriveAnim.get(w.id);
+        if (land) {
+          if (now < land) continue; // its meteor is still on the way
+          fade = Math.min(1, (now - land) / 700);
+          if (fade >= 1) arriveAnim.delete(w.id);
+        }
         r = 1.6 * zs;
-        const g = 14 * zs;
-        ctx.globalAlpha = 0.45 * tw;
-        ctx.drawImage(sprite(UNLIT), sx - g, sy - g, g * 2, g * 2);
+        const g = 14 * zs * (1 + (1 - fade) * 2);
+        ctx.globalAlpha = 0.45 * tw * (0.4 + 0.6 * fade) + (1 - fade) * 0.5;
+        ctx.drawImage(sprite(land ? colorOf(w) : UNLIT), sx - g, sy - g, g * 2, g * 2);
       }
       drawn.push({ w, sx, sy, r });
     }
@@ -393,6 +401,12 @@ export function createSpace(canvas, handlers = {}) {
           ? (isHover || isSel ? '#ffffff' : 'rgba(236,239,255,0.86)')
           : (isHover ? 'rgba(215,222,255,0.95)' : 'rgba(150,160,205,0.5)');
         ctx.fillText(w.text, sx, sy + r + 6);
+        // the English meaning, once you are close enough to read it
+        if (w.gloss && state.settings.gloss && (z > 0.85 || isHover || isSel)) {
+          ctx.font = `italic 400 ${Math.max(10, fontSize - 2.5)}px Fraunces, Georgia, serif`;
+          ctx.fillStyle = w.lit ? 'rgba(200,206,235,0.55)' : 'rgba(150,160,205,0.38)';
+          ctx.fillText(w.gloss, sx, sy + r + 8 + fontSize);
+        }
       }
     }
   }
@@ -402,9 +416,32 @@ export function createSpace(canvas, handlers = {}) {
     for (let i = effects.length - 1; i >= 0; i--) {
       const e = effects[i];
       const t = (now - e.t0) / e.dur;
-      if (t >= 1) { effects.splice(i, 1); continue; }
+      if (t >= 1) {
+        effects.splice(i, 1);
+        if (e.kind === 'meteor') effects.push({ kind: 'ring', x: e.x, y: e.y, color: e.color, t0: now, dur: 900, max: 70 });
+        continue;
+      }
       if (t < 0) continue;
       const [sx, sy] = w2s(e.x, e.y);
+      if (e.kind === 'meteor') {
+        // a streak falling from the upper left onto the star's position
+        const k = t * t;
+        const [x0, y0] = w2s(e.x - 900, e.y - 620);
+        const hx = lerp(x0, sx, k), hy = lerp(y0, sy, k);
+        const tail = 0.18;
+        const tx = lerp(x0, sx, Math.max(0, k - tail)), ty = lerp(y0, sy, Math.max(0, k - tail));
+        const grad = ctx.createLinearGradient(tx, ty, hx, hy);
+        grad.addColorStop(0, hexA(e.color, 0));
+        grad.addColorStop(1, hexA(e.color, 0.9));
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+        ctx.drawImage(sprite('#ffffff'), hx - 10, hy - 10, 20, 20);
+        continue;
+      }
       if (e.kind === 'ring') {
         const r = e.max * easeOut(t) * cam.z;
         ctx.strokeStyle = hexA(e.color, (1 - t) * 0.75);
@@ -625,6 +662,18 @@ export function createSpace(canvas, handlers = {}) {
     }
   }
 
+  function arrive(ids) {
+    const now = performance.now();
+    ids.forEach((id, i) => {
+      const w = state.words[id];
+      if (!w) return;
+      const t0 = now + 200 + i * 160;
+      const dur = 1100;
+      effects.push({ kind: 'meteor', x: w.x, y: w.y, color: colorOf(w), t0, dur });
+      arriveAnim.set(id, t0 + dur);
+    });
+  }
+
   function ripple(id) {
     const w = state.words[id];
     if (!w) return;
@@ -641,7 +690,7 @@ export function createSpace(canvas, handlers = {}) {
     setSelected(id) { selected = id; },
     markLit(id) { litAnim.set(id, performance.now()); },
     markNebula(cat) { nebulaAnim.set(cat, performance.now()); },
-    flyTo, focusWord, fitIds, fitAll, jumpTo, burst, ripple,
+    flyTo, focusWord, fitIds, fitAll, jumpTo, burst, ripple, arrive,
     screenOf(id) { const w = state.words[id]; return w ? w2s(w.x, w.y) : null; },
     onScreen(id, margin = 60) {
       const w = state.words[id];

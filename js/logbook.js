@@ -1,7 +1,8 @@
 // The Logbook: your star chart — words by sector, constellations, galaxies, missions.
 
-import { state, derived, on, deleteConstellation, deleteGalaxy, resolveBlueprint } from './store.js';
-import { BLUEPRINTS, SEED_WORDS } from './seed.js';
+import {
+  state, derived, on, deleteConstellation, deleteGalaxy, resolveBlueprint, blueprints, pack, levelProgress,
+} from './store.js';
 import { sentenceText, paragraphText, countTokens, countParagraph, formatBig } from './language.js';
 import { app, h, fill, $, icon } from './ui.js';
 import { MISSIONS, doneCount } from './missions.js';
@@ -10,7 +11,7 @@ import { mastery } from './panels.js';
 const root = $('#log');
 let tab = 'stars';
 let bodyEl, tabsEl;
-const TABS = [['stars', 'Stars'], ['constellations', 'Constellations'], ['galaxies', 'Galaxies'], ['missions', 'Missions']];
+const TABS = [['stars', 'Stars'], ['constellations', 'Constellations'], ['galaxies', 'Galaxies'], ['missions', 'Journey']];
 
 export function initLog() {
   tabsEl = h('div', { class: 'tabs', role: 'tablist' });
@@ -43,7 +44,8 @@ export function show(t) { tab = t; open(); }
 function render() {
   const counts = {
     stars: derived.litCount, constellations: Object.keys(state.constellations).length,
-    galaxies: Object.keys(state.galaxies).length, missions: `${doneCount()}/${MISSIONS.length}`,
+    galaxies: Object.keys(state.galaxies).length,
+    missions: levelProgress() ? `lv ${levelProgress().level}` : `${doneCount()}/${MISSIONS.length}`,
   };
   fill(tabsEl, ...TABS.map(([id, label]) => h('button', {
     class: 'tab' + (tab === id ? ' active' : ''), role: 'tab', 'aria-selected': String(tab === id),
@@ -63,7 +65,8 @@ function stars() {
     : 'No stars yet.'));
   for (const c of cats) {
     const ids = derived.byCat[c.id] || [];
-    const total = state.mode === 'english' && SEED_WORDS[c.id] ? Object.values(state.words).filter((w) => w.cat === c.id).length : null;
+    // only count stars you could already have found (leveled packs hide future levels)
+    const total = state.pack ? derived.list.filter((w) => w.seed && w.cat === c.id && (!w.lvl || w.lvl <= state.level)).length || null : null;
     if (!ids.length) {
       if (total && !c.custom) out.push(h('div', { class: 'sector dark', style: { '--c': c.color } }, h('div', { class: 'sector-head' }, h('i'), h('b', {}, '?'.repeat(Math.min(6, c.label.length))), h('span', {}, `undiscovered sector · ${total} stars`))));
       continue;
@@ -73,10 +76,11 @@ function stars() {
       h('div', { class: 'mini-chips' }, ids.map((id) => {
         const w = state.words[id];
         const m = mastery(w.seen);
+        const meaning = w.note || w.gloss;
         return h('button', {
-          class: `mini-chip tier-${m.tier}`, title: `${m.name} · met ${w.seen}×${w.note ? ` · ${w.note}` : ''}`,
+          class: `mini-chip tier-${m.tier}`, title: `${m.name} · met ${w.seen}×${meaning ? ` · ${meaning}` : ''}`,
           onclick: () => { app.space.focusWord(id, 1.2); app.panels.openStarCard(id); },
-        }, w.text, w.note ? h('small', {}, w.note) : null);
+        }, w.text, meaning ? h('small', {}, meaning) : null);
       }))));
   }
   return out;
@@ -87,12 +91,12 @@ function constellations() {
   const out = [];
   if (!list.length) out.push(h('p', { class: 'lede' }, 'No constellations yet. Open the Forge, build a sentence, make a word a variable, and save it.'));
   for (const c of list) {
-    const n = countTokens(c.tokens, state.words, derived.byCat);
+    const n = countTokens(c.tokens, state.words, derived.orbit);
     out.push(h('div', { class: 'entry' },
       h('div', { class: 'entry-head' }, h('b', {}, c.name), h('span', { class: 'grow' }), h('span', { class: 'pill' }, `${formatBig(n)}`)),
       h('div', { class: 'pattern' }, c.tokens.map((t) => {
         const w = state.words[t.wordId];
-        const cat = state.categories[w?.cat] || state.categories.uncharted;
+        const cat = state.categories[t.slot || w?.cat] || state.categories.uncharted;
         return t.var ? h('span', { class: 'slot', style: { '--c': cat.color } }, cat.label) : h('span', { class: 'fixed' }, w?.text);
       }), h('span', { class: 'fixed' }, c.end)),
       h('div', { class: 'entry-sample' }, sentenceText(c.tokens, state.words, c.end)),
@@ -102,9 +106,10 @@ function constellations() {
         h('span', { class: 'grow' }),
         confirmDelete(() => deleteConstellation(c.id)))));
   }
-  if (state.mode === 'english') {
-    const sighted = BLUEPRINTS.filter((bp) => state.sighted[bp.id]);
-    const hidden = BLUEPRINTS.length - sighted.length;
+  if (state.pack) {
+    const all = blueprints();
+    const sighted = all.filter((bp) => state.sighted[bp.id]);
+    const hidden = (pack().blueprints || []).length - sighted.length;
     out.push(h('h4', { class: 'log-sub' }, '✧ Sighted in the sky'));
     if (!sighted.length) out.push(h('p', { class: 'lede' }, 'Hidden constellations appear once you light all the stars they need.'));
     for (const bp of sighted) {
@@ -113,9 +118,9 @@ function constellations() {
         h('div', { class: 'entry-head' }, h('b', {}, bp.name), h('span', { class: 'grow' }),
           h('button', { class: 'btn small', disabled: !r, onclick: () => app.forge.loadBlueprint(bp) }, icon('forge', 14), 'Forge it')),
         h('div', { class: 'pattern' }, bp.pattern.split(' ').map((p) => {
-          const m = p.match(/^\[(.+)\]$/);
+          const m = p.match(/^\[([a-z]+)(:inf)?\]$/);
           const cat = m && state.categories[m[1]];
-          return m ? h('span', { class: 'slot', style: { '--c': cat.color } }, cat.label) : h('span', { class: 'fixed' }, p);
+          return m ? h('span', { class: 'slot', style: { '--c': cat.color } }, cat.label, m[2] ? ' · inf' : '') : h('span', { class: 'fixed' }, p);
         }), h('span', { class: 'fixed' }, bp.end))));
     }
     if (hidden) out.push(h('p', { class: 'lede dim' }, `${hidden} more constellation${hidden === 1 ? '' : 's'} still hide in the dark.`));
@@ -127,7 +132,7 @@ function galaxies() {
   const list = Object.values(state.galaxies).sort((a, b) => b.updatedAt - a.updatedAt);
   if (!list.length) return [h('p', { class: 'lede' }, 'No galaxies yet. A galaxy links sentences into a paragraph. Save a constellation first, then open Galaxy.')];
   return list.map((g) => h('div', { class: 'entry' },
-    h('div', { class: 'entry-head' }, h('b', {}, g.name), h('span', { class: 'grow' }), h('span', { class: 'pill' }, formatBig(countParagraph(g.parts, g.joins, state.words, derived.byCat)))),
+    h('div', { class: 'entry-head' }, h('b', {}, g.name), h('span', { class: 'grow' }), h('span', { class: 'pill' }, formatBig(countParagraph(g.parts, g.joins, state.words, derived.orbit)))),
     h('div', { class: 'entry-sample serif' }, paragraphText(g.parts, g.joins, state.words)),
     h('div', { class: 'entry-tools' },
       h('button', { class: 'btn small', onclick: () => app.galaxy.loadGalaxy(g.id) }, icon('galaxy', 14), 'Open'),
@@ -135,9 +140,37 @@ function galaxies() {
       confirmDelete(() => deleteGalaxy(g.id)))));
 }
 
+function journey() {
+  const p = pack();
+  const lp = levelProgress();
+  if (!lp) return [];
+  return [
+    h('h4', { class: 'log-sub' }, `${p.name} · ${p.english}`),
+    h('ol', { class: 'level-list' }, p.levels.map((L, i) => {
+      const n = i + 1;
+      const done = n < state.level || (n === state.level && state.journeyDone);
+      const current = n === state.level && !done;
+      const words = derived.list.filter((w) => w.seed && w.lvl === n);
+      return h('li', { class: `lvl ${done ? 'done' : current ? 'current' : 'locked'}` },
+        h('span', { class: 'lvl-n' }, done ? '✦' : String(n)),
+        h('div', { class: 'lvl-main' },
+          h('b', {}, L.name, h('span', { class: 'native' }, L.native)),
+          h('small', {}, L.goal),
+          n <= state.level
+            ? h('div', { class: 'lvl-words' }, words.map((w) => h('span', { class: w.lit ? 'on' : '' }, w.text)))
+            : h('small', { class: 'dim' }, `${words.length} stars waiting beyond the edge`),
+          current ? h('div', { class: 'lvl-goals' },
+            h('small', {}, `Light ${Math.min(lp.lit, lp.needLit)}/${lp.needLit} stars · make ${Math.min(lp.practice, lp.needPractice)}/${lp.needPractice} sentences`),
+            h('span', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, ((Math.min(lp.lit, lp.needLit) / lp.needLit) * 50) + ((Math.min(lp.practice, lp.needPractice) / lp.needPractice) * 50))}%` } }))) : null));
+    })),
+    h('h4', { class: 'log-sub' }, 'Missions'),
+  ];
+}
+
 function missions() {
   return [
-    h('p', { class: 'lede' }, `${doneCount()} of ${MISSIONS.length} complete.`),
+    ...journey(),
+    h('p', { class: 'lede' }, `${doneCount()} of ${MISSIONS.length} missions complete.`),
     h('ol', { class: 'mission-list' }, MISSIONS.map((m) => {
       const done = !!state.missions[m.id];
       const v = Math.min(m.target, m.value());

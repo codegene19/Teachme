@@ -21,7 +21,8 @@
     <div class="genesis-lines">
       <p class="g-line" style="--i:0">Fluency isn’t fifty thousand words.</p>
       <p class="g-line" style="--i:1">It’s fifty words, in endless orbits.</p>
-      <p class="g-line g-call" style="--i:2" id="genesisLede">Choose your first word.</p>
+      <p class="g-line g-call" style="--i:2" id="genesisLede">Choose a language to learn.</p>
+      <div class="genesis-langs" id="genesisLangs"></div>
     </div>
     <div class="genesis-motes" id="genesisMotes"></div>
     <div class="genesis-foot">
@@ -29,7 +30,7 @@
         <input type="text" maxlength="40" aria-label="Your first word" spellcheck="false">
         <button type="submit" aria-label="Ignite">✦</button>
       </form>
-      <button type="button" class="link-btn" id="genesisEmpty">Start an empty universe — any language</button>
+      <div class="genesis-alt" id="genesisAlt"></div>
     </div>
   </section>
 
@@ -37,6 +38,7 @@
   <header class="hud" id="hud" hidden>
     <div class="brand"><span class="brand-mark">✦</span><span class="brand-name">Lexicosmos</span></div>
     <div class="stats">
+      <button class="stat stat-level" id="statLevelWrap" title="Your level — open the journey" hidden><b id="statLevel">1</b><span>level</span></button>
       <button class="stat" data-open="stars" title="Words you have discovered"><b id="statStars">0</b><span>stars</span></button>
       <button class="stat" data-open="stars" title="Sentence roles you have discovered"><b id="statSectors">0</b><span>sectors</span></button>
       <button class="stat" data-open="constellations" title="Saved sentence templates"><b id="statConst">0</b><span><i class="long">constellations</i><i class="short">patterns</i></span></button>

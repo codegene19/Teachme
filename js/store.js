@@ -1,8 +1,9 @@
 // The universe: every star (word), sector (category), constellation
 // (sentence template) and galaxy (paragraph) — persisted to localStorage.
 
-import { CATEGORY_DEFS, UNCHARTED_DEF, SEED_WORDS, EXAMPLES, CUSTOM_COLORS, NAMES } from './seed.js';
-import { norm, cleanWordText, parseInput, countTokens, cap } from './language.js';
+import { CATEGORY_DEFS, UNCHARTED_DEF, CUSTOM_COLORS, NAMES } from './seed.js';
+import { PACKS } from './packs/index.js';
+import { norm, fold, cleanWordText, parseInput, countTokens, cap, setGrammar } from './language.js';
 
 const KEY = 'lexicosmos:universe:v1';
 const VERSION = 1;
@@ -36,75 +37,123 @@ export function rng(seed) {
   };
 }
 
-export const seedId = (text) => 's:' + norm(text).replace(/[^a-z0-9]+/g, '-');
+const slug = (text) => fold(norm(text)).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+// English keeps its original ids ("s:coffee") so older universes still load.
+export const packWordId = (packId, text) => (packId === 'en' ? 's:' : `${packId}:`) + slug(text);
 const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-// The seed graph: words adjacent in an example sentence are linked.
-const seedEdges = (() => {
-  const byText = new Map();
-  for (const list of Object.values(SEED_WORDS)) for (const t of list) byText.set(norm(t), seedId(t));
+// ---------------------------------------------------------- word lookups
+// Every form of every word points back at its star: "vogliamo" → volere (we),
+// "volere" → volere (infinitive). A second, accent-free index forgives
+// "perche" for "perché".
+function buildLookup(entries) {
+  const exact = new Map();
+  const loose = new Map();
+  const add = (text, info) => {
+    const k = norm(text);
+    if (!k) return;
+    if (!exact.has(k)) exact.set(k, info);
+    const f = fold(k);
+    if (!loose.has(f)) loose.set(f, info);
+  };
+  for (const e of entries) {
+    add(e.text, e.forms ? { id: e.id, inf: true } : { id: e.id });
+    e.forms?.forEach((f, i) => add(f, { id: e.id, person: i }));
+    e.num?.forEach((f) => add(f, { id: e.id }));
+  }
+  return (phrase) => exact.get(norm(phrase)) || loose.get(fold(norm(phrase))) || null;
+}
+
+const edgeCache = new Map();
+function edgesFor(pack) {
+  if (!pack) return [];
+  if (edgeCache.has(pack.id)) return edgeCache.get(pack.id);
+  const resolve = buildLookup(pack.words.map((w) => ({ id: packWordId(pack.id, w.t), text: w.t, forms: w.f, num: w.n })));
   const edges = [];
-  for (const s of EXAMPLES) {
-    const { tokens } = parseInput(s, byText);
+  for (const s of pack.examples || []) {
+    const { tokens } = parseInput(s, resolve);
     for (let i = 0; i + 1 < tokens.length; i++) {
       if (tokens[i].wordId && tokens[i + 1].wordId) edges.push([tokens[i].wordId, tokens[i + 1].wordId]);
     }
   }
+  edgeCache.set(pack.id, edges);
   return edges;
-})();
+}
 
 // ------------------------------------------------------------------- state
 export let state = null;
 export const derived = {
-  list: [], byCat: {}, byText: new Map(), adj: new Map(),
-  discoverable: new Set(), litCount: 0, reach: 0, sectors: 0,
+  list: [], byCat: {}, orbit: {}, adj: new Map(), discoverable: new Set(),
+  litCount: 0, reach: 0, sectors: 0, resolve: () => null,
 };
+
+export const pack = () => (state?.pack ? PACKS[state.pack] || null : null);
+export const hasLevels = () => !!pack()?.levels;
 
 const emptyForge = () => ({ tokens: [], end: '.', name: '', editingId: null });
 const emptyGalaxy = () => ({ parts: [], joins: [], name: '', editingId: null });
 
-function freshState(mode) {
+function freshState(packId) {
+  const p = packId ? PACKS[packId] : null;
   const categories = {};
   [...CATEGORY_DEFS, UNCHARTED_DEF].forEach((c, i) => {
     categories[c.id] = { ...c, order: i, discovered: false, custom: false };
   });
   const s = {
-    version: VERSION, mode, createdAt: Date.now(),
+    version: VERSION, pack: p ? p.id : null, createdAt: Date.now(),
+    level: p?.levels ? 1 : 0, levelBase: 0, journeyDone: false,
     categories, words: {}, constellations: {}, galaxies: {},
     missions: {}, hints: {}, sighted: {},
-    stats: { swaps: 0, spoken: 0, shuffles: 0, ignited: 0, drifts: 0, eclipses: 0, streak: 0, bestStreak: 0 },
-    settings: { sound: true, speakOnIgnite: true, voiceURI: '', rate: 0.9, lang: mode === 'english' ? 'en-US' : '' },
+    stats: { swaps: 0, spoken: 0, shuffles: 0, ignited: 0, drifts: 0, eclipses: 0, streak: 0, bestStreak: 0, made: 0 },
+    settings: { sound: true, speakOnIgnite: true, gloss: true, voiceURI: '', rate: 0.9, lang: p?.voice || '' },
     forge: emptyForge(), galaxyDraft: emptyGalaxy(), nextOrder: 0,
   };
-  if (mode === 'english') addSeedWords(s);
+  if (p) addPackWords(s, p);
   return s;
 }
 
-function addSeedWords(s) {
-  for (const [cat, list] of Object.entries(SEED_WORDS)) {
-    for (const text of list) {
-      const id = seedId(text);
-      if (!s.words[id]) s.words[id] = { id, text, cat, lit: false, seen: 0, note: '', seed: true, order: s.nextOrder++ };
+/** Create the pack's stars, or refresh their grammar if they already exist. */
+function addPackWords(s, p) {
+  for (const pw of p.words) {
+    const id = packWordId(p.id, pw.t);
+    const grammar = {
+      text: pw.t, cat: pw.c, lvl: pw.l || 0, gloss: pw.en || '',
+      forms: pw.f || null, num: pw.n || null, person: pw.p ?? null, also: pw.also || null,
+      comma: !!pw.comma, joinComma: !!pw.joinComma,
+    };
+    const ex = s.words[id];
+    if (ex) {
+      const moved = ex.cat !== grammar.cat;
+      Object.assign(ex, grammar, { seed: true });
+      if (moved) { ex.x = undefined; ex.y = undefined; }
+    } else {
+      s.words[id] = { id, ...grammar, lit: false, seen: 0, note: '', seed: true, order: s.nextOrder++ };
     }
   }
 }
 
 function migrate(s) {
-  const base = freshState(s.mode === 'empty' ? 'empty' : 'english');
+  if (!('pack' in s)) s.pack = s.mode === 'empty' ? null : 'en';
+  delete s.mode;
+  if (s.pack && !PACKS[s.pack]) s.pack = null;
+  const base = freshState(s.pack);
   s.categories = { ...base.categories, ...(s.categories || {}) };
   s.stats = { ...base.stats, ...(s.stats || {}) };
   s.settings = { ...base.settings, ...(s.settings || {}) };
   for (const k of ['words', 'constellations', 'galaxies', 'missions', 'hints', 'sighted']) s[k] = s[k] || {};
+  if (typeof s.level !== 'number') s.level = base.level;
+  if (typeof s.levelBase !== 'number') s.levelBase = 0;
   s.forge = { ...emptyForge(), ...(s.forge || {}) };
   s.galaxyDraft = { ...emptyGalaxy(), ...(s.galaxyDraft || {}) };
   if (typeof s.nextOrder !== 'number') s.nextOrder = Object.keys(s.words).length;
-  if (s.mode !== 'empty') { s.mode = 'english'; addSeedWords(s); }
+  const p = s.pack ? PACKS[s.pack] : null;
+  if (p) addPackWords(s, p);
   // Drop tokens that point at words that no longer exist.
   const ok = (t) => t && s.words[t.wordId];
   s.forge.tokens = s.forge.tokens.filter(ok);
   for (const c of Object.values(s.constellations)) c.tokens = (c.tokens || []).filter(ok);
   const fixG = (g) => {
-    g.parts = (g.parts || []).map((p) => ({ ...p, tokens: (p.tokens || []).filter(ok) })).filter((p) => p.tokens.length);
+    g.parts = (g.parts || []).map((part) => ({ ...part, tokens: (part.tokens || []).filter(ok) })).filter((part) => part.tokens.length);
     g.joins = (g.joins || []).slice(0, Math.max(0, g.parts.length - 1)).map((j) => (j && s.words[j] ? j : null));
     while (g.joins.length < g.parts.length - 1) g.joins.push(null);
   };
@@ -120,7 +169,7 @@ export function anchorOf(c) {
 
 // Stars are placed deterministically inside their sector, keeping a little
 // elliptical breathing room so labels don't collide.
-const MIN_DX = 74, MIN_DY = 48;
+const MIN_DX = 78, MIN_DY = 50;
 function placeWord(s, w) {
   const c = s.categories[w.cat] || s.categories.uncharted;
   const a0 = anchorOf(c);
@@ -151,14 +200,23 @@ function placeMissing(s) {
 
 function rebuild() {
   const { words, categories } = state;
+  const p = pack();
+  const leveled = !!p?.levels;
   derived.byCat = {};
-  for (const id in categories) derived.byCat[id] = [];
-  derived.byText = new Map();
+  derived.orbit = {};
+  for (const id in categories) { derived.byCat[id] = []; derived.orbit[id] = []; }
   derived.list = Object.values(words).sort((a, b) => a.order - b.order);
+  derived.resolve = buildLookup(derived.list);
   let lit = 0;
   for (const w of derived.list) {
-    derived.byText.set(norm(w.text), w.id);
-    if (w.lit) { (derived.byCat[w.cat] ||= []).push(w.id); lit++; }
+    if (!w.lit) continue;
+    (derived.byCat[w.cat] ||= []).push(w.id);
+    (derived.orbit[w.cat] ||= []).push(w.id);
+    lit++;
+  }
+  // Guests (e.g. "volere" also orbiting ACTION) come after a sector's own stars.
+  for (const w of derived.list) {
+    if (w.lit) for (const extra of w.also || []) (derived.orbit[extra] ||= []).push(w.id);
   }
   derived.litCount = lit;
 
@@ -169,21 +227,28 @@ function rebuild() {
     if (!adj.has(b)) adj.set(b, new Set());
     adj.get(a).add(b); adj.get(b).add(a);
   };
-  for (const [a, b] of seedEdges) link(a, b);
+  for (const [a, b] of edgesFor(p)) link(a, b);
   for (const c of Object.values(state.constellations)) {
     for (let i = 0; i + 1 < c.tokens.length; i++) link(c.tokens[i].wordId, c.tokens[i + 1].wordId);
   }
   derived.adj = adj;
 
+  // Leveled languages reveal every star of the levels you have reached;
+  // the English starter reveals the neighbours of the stars you know.
   const disc = new Set();
   for (const w of derived.list) {
-    if (!w.lit) continue;
-    for (const n of adj.get(w.id) || []) if (!words[n].lit) disc.add(n);
+    if (w.lit) continue;
+    if (leveled) { if (w.lvl > 0 && w.lvl <= state.level) disc.add(w.id); }
+    else if ([...(adj.get(w.id) || [])].some((n) => words[n].lit)) disc.add(w.id);
   }
   derived.discoverable = disc;
 
-  derived.reach = Object.values(state.constellations).reduce((sum, c) => sum + countTokens(c.tokens, words, derived.byCat), 0);
+  derived.reach = Object.values(state.constellations).reduce((sum, c) => sum + countTokens(c.tokens, words, derived.orbit), 0);
   derived.sectors = Object.keys(categories).filter((id) => (derived.byCat[id] || []).length > 0).length;
+}
+
+function applyGrammar() {
+  setGrammar({ invert: !!pack()?.invert });
 }
 
 // -------------------------------------------------------------- persistence
@@ -208,15 +273,20 @@ export function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) loaded = JSON.parse(raw);
   } catch { loaded = null; }
-  state = loaded && loaded.version === VERSION ? migrate(loaded) : freshState('english');
+  state = loaded && loaded.version === VERSION ? migrate(loaded) : freshState('it');
   placeMissing(state);
+  applyGrammar();
   rebuild();
   return state;
 }
 
-export function resetUniverse(mode = 'english') {
-  state = freshState(mode);
+/** Start over with a language pack ('it', 'es', 'en') or null for an empty universe. */
+export function resetUniverse(packId = 'it') {
+  if (packId === 'english') packId = 'en';
+  if (packId === 'empty') packId = null;
+  state = freshState(packId);
   placeMissing(state);
+  applyGrammar();
   rebuild();
   saveNow();
   emit('reset');
@@ -231,6 +301,7 @@ export function importUniverse(obj) {
   if (!obj || obj.version !== VERSION || typeof obj.words !== 'object') throw new Error('Not a Lexicosmos universe file.');
   state = migrate(obj);
   placeMissing(state);
+  applyGrammar();
   rebuild();
   saveNow();
   emit('reset');
@@ -238,23 +309,36 @@ export function importUniverse(obj) {
 }
 
 // ------------------------------------------------------------------ queries
+export const resolveText = (phrase) => derived.resolve(phrase);
 export const findWord = (text) => {
-  const id = derived.byText.get(norm(cleanWordText(text)));
-  return id ? state.words[id] : null;
+  const info = derived.resolve(cleanWordText(text));
+  return info ? state.words[info.id] : null;
 };
-export const litIn = (cat) => derived.byCat[cat] || [];
+export const litIn = (cat) => derived.orbit[cat] || [];
 export const catOf = (wordId) => state.categories[state.words[wordId]?.cat] || state.categories.uncharted;
+
+/** Hidden constellations available at the current level. */
+export function blueprints() {
+  const p = pack();
+  if (!p) return [];
+  return (p.blueprints || []).filter((bp) => !bp.l || bp.l <= state.level);
+}
 
 export function resolveBlueprint(bp) {
   const tokens = [];
   const used = {};
   for (const part of bp.pattern.split(' ')) {
-    const m = part.match(/^\[(.+)\]$/);
+    const m = part.match(/^\[([a-z]+)(:inf)?\]$/);
     if (m) {
       const ids = litIn(m[1]);
       if (!ids.length) return null;
       const k = used[m[1]] = (used[m[1]] ?? -1) + 1;
-      tokens.push({ wordId: ids[k % ids.length], var: true });
+      const taken = new Set(tokens.map((t) => t.wordId));
+      const fresh = ids.filter((id) => !taken.has(id));
+      const pickFrom = fresh.length ? fresh : ids;
+      const tok = { wordId: pickFrom[k % pickFrom.length], var: true, slot: m[1] };
+      if (m[2]) tok.inf = true;
+      tokens.push(tok);
     } else {
       const w = findWord(part);
       if (!w || !w.lit) return null;
@@ -269,6 +353,44 @@ export function cosmicName(kind = 'constellation') {
   return kind === 'galaxy'
     ? `${pick(NAMES.gal1)} of ${pick(NAMES.gal2)}`
     : `The ${pick(NAMES.adj)} ${pick(NAMES.noun)}`;
+}
+
+// ----------------------------------------------------------------- levels
+/** Sentences you have actually made: every swap, shuffle, playback or eclipse answer counts once. */
+export const practiceTotal = () => state.stats.made || 0;
+
+/** Where you are in the journey, and what the current level still asks of you. */
+export function levelProgress() {
+  const p = pack();
+  if (!p?.levels) return null;
+  const n = Math.min(state.level, p.levels.length);
+  const def = p.levels[n - 1];
+  const ids = derived.list.filter((w) => w.seed && w.lvl === n).map((w) => w.id);
+  const lit = ids.filter((id) => state.words[id].lit).length;
+  const needLit = Math.min(ids.length, def.need?.lit ?? Math.max(1, Math.ceil(ids.length * 0.7)));
+  const practice = Math.max(0, practiceTotal() - state.levelBase);
+  const needPractice = def.need?.practice ?? 6 + 3 * n;
+  return {
+    level: n, total: p.levels.length, def, ids, lit, needLit, practice, needPractice,
+    done: lit >= needLit && practice >= needPractice, final: n === p.levels.length,
+    next: p.levels[n] || null,
+  };
+}
+
+/** Open the next level: its stars arrive in the sky. */
+export function levelUp() {
+  const prog = levelProgress();
+  if (!prog?.done) return null;
+  if (prog.final) {
+    if (!state.journeyDone) { state.journeyDone = true; commit(); emit('journey-complete', {}); }
+    return null;
+  }
+  state.level = prog.level + 1;
+  state.levelBase = practiceTotal();
+  const ids = derived.list.filter((w) => w.seed && w.lvl === state.level).map((w) => w.id);
+  commit();
+  emit('levelup', { level: state.level, ids });
+  return state.level;
 }
 
 // ---------------------------------------------------------------- mutations
@@ -299,7 +421,7 @@ export function addWord({ text, cat = 'uncharted', note = '' }, { quiet = false 
     return existing;
   }
   if (!state.categories[cat]) cat = 'uncharted';
-  const w = { id: uid('u:'), text: clean, cat, lit: true, litAt: Date.now(), seen: 0, note: String(note || '').slice(0, 200), seed: false, order: state.nextOrder++ };
+  const w = { id: uid('u:'), text: clean, cat, lit: true, litAt: Date.now(), seen: 0, note: String(note || '').slice(0, 200), seed: false, lvl: 0, order: state.nextOrder++ };
   state.words[w.id] = w;
   placeWord(state, w);
   state.stats.ignited++;
@@ -332,10 +454,11 @@ export function updateWord(id, patch) {
 export function deleteWord(id) {
   const w = state.words[id];
   if (!w || w.seed) return;
-  const alt = litIn(w.cat).find((x) => x !== id);
+  const alt = (t) => litIn(t.slot || w.cat).find((x) => x !== id);
   const fix = (tokens) => tokens.flatMap((t) => {
     if (t.wordId !== id) return [t];
-    return t.var && alt ? [{ ...t, wordId: alt }] : [];
+    const a = t.var && alt(t);
+    return a ? [{ ...t, wordId: a }] : [];
   });
   delete state.words[id];
   state.forge.tokens = fix(state.forge.tokens);
@@ -344,7 +467,7 @@ export function deleteWord(id) {
     if (!c.tokens.length) delete state.constellations[cid];
   }
   const fixG = (g) => {
-    g.parts.forEach((p) => { p.tokens = fix(p.tokens); });
+    g.parts.forEach((part) => { part.tokens = fix(part.tokens); });
     g.joins = g.joins.map((j) => (j === id ? null : j));
     for (let i = g.parts.length - 1; i >= 0; i--) if (!g.parts[i].tokens.length) removePart(g, i);
   };
@@ -395,7 +518,13 @@ export function markHint(key) {
   return true;
 }
 
-const cloneTokens = (tokens) => tokens.map((t) => ({ wordId: t.wordId, var: !!t.var }));
+const cloneTokens = (tokens) => tokens.map((t) => {
+  const c = { wordId: t.wordId, var: !!t.var };
+  if (t.slot) c.slot = t.slot;
+  if (t.inf) c.inf = true;
+  if (t.person != null) c.person = t.person;
+  return c;
+});
 
 export function saveConstellation({ id, name, tokens, end }) {
   const cid = id && state.constellations[id] ? id : uid('c:');

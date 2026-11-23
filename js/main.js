@@ -1,7 +1,9 @@
 // Lexicosmos — boot and wiring.
 
-import { load, state, derived, on, persist, saveNow, ignite, resolveBlueprint, markHint } from './store.js';
-import { BLUEPRINTS } from './seed.js';
+import {
+  load, state, derived, on, persist, saveNow, ignite, resolveBlueprint, markHint,
+  pack, hasLevels, blueprints, levelProgress, levelUp,
+} from './store.js';
 import { sentenceText, formatBig } from './language.js';
 import { createSpace } from './space.js';
 import { app, $, $$, h, fill, icon, toast, caption, countUp, closeModal, hidePopover, isPopoverOpen, isModalOpen } from './ui.js';
@@ -46,7 +48,7 @@ on('ignite', ({ id, newSector, quiet }) => {
   space.burst(id, newSector);
   igniteSound(w.cat);
   if (!quiet) {
-    caption(w.text, `${c.label} · ${c.sector}`, c.color);
+    caption(w.text, w.gloss ? `“${w.gloss}” · ${c.label}` : `${c.label} · ${c.sector}`, c.color);
     if (state.settings.speakOnIgnite) speak(w.text, speechOpts());
   }
   if (newSector) space.markNebula(c.id);
@@ -55,7 +57,9 @@ on('ignite', ({ id, newSector, quiet }) => {
     toast({ kind: 'sector', color: c.color, title: c.sector, body: `${c.label} — ${c.blurb}. Every star in this sector can take another’s place in a sentence.` });
   }
   if (derived.litCount === 1) {
-    if (state.mode === 'english' && markHint('neighbors')) {
+    if (hasLevels() && markHint('neighbors')) {
+      setTimeout(() => toast({ kind: 'signal', title: 'Your first words are here', body: `The faint stars around you are among the most-used words in ${pack().english}. Tap each one to light it and hear it.` }), 3400);
+    } else if (state.pack && markHint('neighbors')) {
       setTimeout(() => toast({ kind: 'signal', title: 'You are not alone', body: 'Faint stars around you are words that live next to yours in real sentences. Tap one to ignite it.' }), 3400);
     }
     return;
@@ -87,19 +91,44 @@ on('settings', ({ key, value }) => {
   if (key === 'sound') { setSoundEnabled(value); updateSoundBtn(); }
 });
 
+// ---------------------------------------------------------------- levels
+let levelPending = false;
+on('levelup', ({ level, ids }) => {
+  const p = pack();
+  const def = p.levels[level - 1];
+  unlockAudio();
+  space.arrive(ids);
+  setTimeout(() => space.fitIds(ids, { maxZ: 0.95, dur: 2200 }), 300);
+  const names = ids.map((id) => state.words[id].text);
+  toast({
+    kind: 'level', title: `Level ${level} · ${def.name}`, timeout: 11000,
+    body: h('div', {}, h('p', { class: 'toast-p' }, `${def.native} — ${def.goal}`),
+      h('p', { class: 'toast-p dim' }, `${ids.length} new stars arrived: ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`)),
+  });
+});
+on('journey-complete', () => {
+  toast({ kind: 'level', title: 'Every level complete', timeout: 11000, body: `You have the core of ${pack().english}. Keep forging, add your own words, and drift through what you know.` });
+});
+
 on('change', onChange);
 
 function onChange() {
-  if (document.body.classList.contains('live')) {
+  const live = document.body.classList.contains('live');
+  if (live) {
     updateHud();
     updateDock();
     updateMissionCard();
+    const lp = levelProgress();
+    if (lp?.done && !levelPending && !(lp.final && state.journeyDone)) {
+      levelPending = true;
+      setTimeout(() => { levelPending = false; levelUp(); }, 1500);
+    }
   }
   const done = checkMissions();
   if (done.length) {
     persist();
     // the first mission completes itself the instant you begin — no fanfare needed
-    done.filter((m) => m.id !== 'spark').forEach((m, k) => setTimeout(() => {
+    done.filter((m) => m.id !== 'spark' && !hasLevels()).forEach((m, k) => setTimeout(() => {
       unlockAudio();
       toast({ kind: 'mission', title: m.title, body: nextMissionLine() });
     }, 400 + k * 900));
@@ -114,8 +143,8 @@ function nextMissionLine() {
 }
 
 function checkSightings() {
-  if (state.mode !== 'english' || !document.body.classList.contains('live')) return;
-  for (const bp of BLUEPRINTS) {
+  if (!state.pack || !document.body.classList.contains('live')) return;
+  for (const bp of blueprints()) {
     if (state.sighted[bp.id]) continue;
     const r = resolveBlueprint(bp);
     if (!r) continue;
@@ -134,6 +163,9 @@ const count = (o) => Object.keys(o).length;
 const fmt = (n) => formatBig(Math.round(n));
 
 function updateHud() {
+  const lp = levelProgress();
+  $('#statLevelWrap').hidden = !lp;
+  if (lp) countUp($('#statLevel'), lp.level, fmt);
   countUp($('#statStars'), derived.litCount, fmt);
   countUp($('#statSectors'), derived.sectors, fmt);
   countUp($('#statConst'), count(state.constellations), fmt);
@@ -149,6 +181,20 @@ function updateSoundBtn() {
 
 function updateMissionCard() {
   const el = $('#missionCard');
+  requestAnimationFrame(() => document.documentElement.style.setProperty('--mission-h', `${el.offsetHeight || 0}px`));
+  const lp = levelProgress();
+  if (lp && !(lp.final && state.journeyDone)) {
+    const row = (label, v, n) => h('span', { class: 'goal' + (v >= n ? ' met' : '') },
+      h('span', { class: 'goal-l' }, v >= n ? '✦ ' : '', label), h('span', { class: 'goal-n' }, `${Math.min(v, n)}/${n}`),
+      h('span', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, (v / n) * 100)}%` } })));
+    fill(el,
+      h('span', { class: 'kicker' }, `${pack().name} · Level ${lp.level} of ${lp.total}`),
+      h('span', { class: 'mission-title' }, lp.def.name, h('span', { class: 'native' }, lp.def.native)),
+      h('span', { class: 'mission-how' }, lp.def.goal),
+      row('Light new stars', lp.lit, lp.needLit),
+      row('Make sentences', lp.practice, lp.needPractice));
+    return;
+  }
   const next = pendingMissions()[0];
   if (!next) {
     fill(el, h('span', { class: 'kicker' }, '✦ Flight log complete'), h('span', { class: 'mission-title' }, 'Every mission done'));
@@ -166,7 +212,7 @@ const UNLOCKS = {
   forge: {
     name: 'Forge', short: 'bind stars into sentences', title: 'The Forge is online', open: () => app.forge.open(),
     body: 'Bind your stars into a sentence. Then turn any word into a variable and watch one sentence become hundreds.',
-    test: () => derived.litCount >= (state.mode === 'english' ? 2 : 1) || state.forge.tokens.length > 0,
+    test: () => derived.litCount >= (state.pack ? 2 : 1) || state.forge.tokens.length > 0,
   },
   galaxy: {
     name: 'Galaxy', short: 'link sentences into paragraphs', title: 'Galaxies are online', open: () => app.galaxy.open(),
@@ -261,6 +307,7 @@ $('#btnSound').addEventListener('click', () => {
 $('#btnSettings').addEventListener('click', () => app.panels.settings());
 $$('.hud [data-open]').forEach((b) => b.addEventListener('click', () => app.log.show(b.dataset.open)));
 $('#missionCard').addEventListener('click', () => app.log.show('missions'));
+$('#statLevelWrap').addEventListener('click', () => app.log.show('missions'));
 
 // ------------------------------------------------------------- keyboard
 document.addEventListener('keydown', (e) => {
@@ -309,14 +356,15 @@ function enterLive({ returning = false } = {}) {
   if (returning) {
     space.jumpTo(0, 0, 0.12);
     space.fitAll({ dur: 2400 });
+    const lp = levelProgress();
     setTimeout(() => toast({
       kind: 'signal', title: 'Welcome back, traveller',
-      body: `${derived.litCount} stars lit · ${formatBig(derived.reach)} sentences within reach. ${nextMissionLine()}`,
+      body: `${derived.litCount} stars lit · ${formatBig(derived.reach)} sentences within reach. ${lp ? `${pack().name}, level ${lp.level}: ${lp.def.name}.` : nextMissionLine()}`,
     }), 1200);
   }
 }
 
-function begin() {
+function begin({ askLanguage = true } = {}) {
   if (derived.litCount > 0) { enterLive({ returning: true }); return; }
   document.body.classList.remove('live');
   $('#hud').hidden = true;
@@ -326,8 +374,16 @@ function begin() {
   runGenesis((id) => {
     setTimeout(() => enterLive(), 900);
     // after the fly-in, drift back so the first neighbours come into view
-    setTimeout(() => revealAround(id, { maxZ: 1.0, dur: 2200 }), 3300);
-  });
+    setTimeout(() => {
+      if (hasLevels()) space.fitIds([id, ...derived.discoverable], { maxZ: 1.0, dur: 2200 });
+      else revealAround(id, { maxZ: 1.0, dur: 2200 });
+    }, 3300);
+  }, { askLanguage });
+}
+
+// Development aid: open with ?debug to inspect the universe from the console.
+if (new URLSearchParams(location.search).has('debug')) {
+  window.lexicosmos = { app, derived, get state() { return state; } };
 }
 
 app.onUniverseReplaced = () => {
@@ -336,7 +392,7 @@ app.onUniverseReplaced = () => {
   app.log.close();
   app.panels.closeStarCard();
   if (app.drift.isOn()) app.drift.stop();
-  begin();
+  begin({ askLanguage: false });
 };
 
 begin();
