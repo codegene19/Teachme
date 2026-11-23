@@ -7,6 +7,17 @@
 import en from './en.js';
 import it from './it.js';
 import es from './es.js';
+import itExtra from './it-extra.js';
+import esExtra from './es-extra.js';
+
+/** Fold extra words into each level and extend the meaning rules. */
+function withExtra(pack, extra) {
+  if (!extra) return pack;
+  const levels = pack.levels.map((L, i) => ({ ...L, words: [...L.words, ...(extra.levels[i + 1] || []).map((w) => ({ ...w, extra: true }))] }));
+  const objects = { ...pack.semantics.objects };
+  for (const [verb, kinds] of Object.entries(extra.objects)) objects[verb] = objects[verb] ? `${objects[verb]} ${kinds}` : kinds;
+  return { ...pack, levels, semantics: { ...pack.semantics, kinds: { ...pack.semantics.kinds, ...extra.kinds }, objects } };
+}
 
 function prepare(pack) {
   if (!pack.levels) return { ...pack, words: pack.words.map((w) => ({ ...w, l: 0 })) };
@@ -22,5 +33,5 @@ function prepare(pack) {
   return { ...pack, words, blueprints, genesis };
 }
 
-export const PACKS = Object.fromEntries([it, es, en].map((p) => [p.id, prepare(p)]));
+export const PACKS = Object.fromEntries([withExtra(it, itExtra), withExtra(es, esExtra), en].map((p) => [p.id, prepare(p)]));
 export const PACK_ORDER = ['it', 'es', 'en'];

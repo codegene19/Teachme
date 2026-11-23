@@ -41,7 +41,7 @@ Hidden constellations (*First Light, Curiosity, Binary Star…*) appear in the s
 
 ### Galaxies A1 → C2
 
-Italian and Spanish each hold about 170 high-frequency words in 20 levels. The levels are grouped into six galaxies that follow the CEFR scale, and each galaxy is its own cluster in the sky. Finish a level and its next words arrive as a meteor shower. Finish a galaxy and the camera flies out to the next one.
+Italian and Spanish each hold about 275 high-frequency words in 20 levels (11–17 per level). The levels are grouped into six galaxies that follow the CEFR scale, and each galaxy is its own cluster in the sky. Finish a level and its next words arrive as a meteor shower. Finish a galaxy and the camera flies out to the next one.
 
 | Galaxy | Levels | What it adds |
 |---|---|---|
@@ -104,6 +104,7 @@ Your universe is saved in the browser's `localStorage`. Use **Settings → Expor
 |---|---|
 | `index.html`, `css/styles.css` | Shell and visual design |
 | `js/packs/it.js`, `js/packs/es.js` | Italian and Spanish: 20 levels in six CEFR galaxies, with meanings, conjugations, tense-setting time words, patterns, verb–object meaning rules, example sentences |
+| `js/packs/it-extra.js`, `js/packs/es-extra.js` | About 100 more words per language, added to every level with the same grammar and meaning rules |
 | `js/packs/conjugate.js` | Rule-based conjugation (present, past, imperfect, future) with irregular overrides |
 | `js/generate.js` | Sentence and story generators |
 | `js/packs/en.js`, `js/packs/index.js` | English starter pack and the loader that normalises packs |
