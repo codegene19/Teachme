@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Lexicosmos</title>
+  <meta name="description" content="A universe of words. Ignite stars, forge sentence templates with variables, and link them into paragraphs — fluency from a few words in endless orbits.">
+  <meta name="theme-color" content="#010208">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23010208'/%3E%3Cpath d='M16 5l2.6 8.4L27 16l-8.4 2.6L16 27l-2.6-8.4L5 16l8.4-2.6z' fill='%23ffd25e'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Space+Grotesk:wght@400;500;600&family=Space+Mono&display=swap">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <canvas id="space" aria-label="Star map of your vocabulary. Lit stars are words you know; faint stars are words you can discover." role="img"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <!-- Genesis: the first moment -->
+  <section id="genesis" class="genesis" hidden>
+    <div class="genesis-lines">
+      <p class="g-line" style="--i:0">Fluency isn’t fifty thousand words.</p>
+      <p class="g-line" style="--i:1">It’s fifty words, in endless orbits.</p>
+      <p class="g-line g-call" style="--i:2" id="genesisLede">Choose your first word.</p>
+    </div>
+    <div class="genesis-motes" id="genesisMotes"></div>
+    <div class="genesis-foot">
+      <form class="genesis-own" id="genesisOwn" autocomplete="off">
+        <input type="text" maxlength="40" aria-label="Your first word" spellcheck="false">
+        <button type="submit" aria-label="Ignite">✦</button>
+      </form>
+      <button type="button" class="link-btn" id="genesisEmpty">Start an empty universe — any language</button>
+    </div>
+  </section>
+
+  <!-- HUD -->
+  <header class="hud" id="hud" hidden>
+    <div class="brand"><span class="brand-mark">✦</span><span class="brand-name">Lexicosmos</span></div>
+    <div class="stats">
+      <button class="stat" data-open="stars" title="Words you have discovered"><b id="statStars">0</b><span>stars</span></button>
+      <button class="stat" data-open="stars" title="Sentence roles you have discovered"><b id="statSectors">0</b><span>sectors</span></button>
+      <button class="stat" data-open="constellations" title="Saved sentence templates"><b id="statConst">0</b><span><i class="long">constellations</i><i class="short">patterns</i></span></button>
+      <button class="stat stat-reach" data-open="constellations" title="How many different sentences your saved constellations can produce"><b id="statReach">0</b><span><i class="long">sentences within reach</i><i class="short">sentences</i></span></button>
+    </div>
+    <div class="hud-tools">
+      <button class="icon-btn" id="btnSound" aria-label="Toggle chimes"></button>
+      <button class="icon-btn" id="btnSettings" aria-label="Settings">
+        <span class="ico"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></span>
+      </button>
+    </div>
+  </header>
+
+  <button class="mission-card" id="missionCard" hidden aria-label="Current mission — open flight log"></button>
+
+  <aside class="star-card" id="starCard" hidden aria-label="Star details"></aside>
+
+  <section class="sheet" id="forge" hidden aria-label="Forge: sentence builder"></section>
+  <section class="sheet" id="galaxy" hidden aria-label="Galaxy: paragraph builder"></section>
+  <aside class="log" id="log" hidden aria-label="Logbook"></aside>
+
+  <div class="caption" id="caption" aria-live="polite"></div>
+
+  <nav class="dock" id="dock" hidden aria-label="Tools">
+    <button class="dock-btn" data-action="add" title="Ignite a new word (N)">
+      <span class="ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span class="dock-l">Word</span>
+    </button>
+    <button class="dock-btn" data-action="forge" title="Forge sentences (F)" hidden>
+      <span class="ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 18l4-8 6 3 4-8"/><circle cx="5" cy="18" r="1.7"/><circle cx="9" cy="10" r="1.7"/><circle cx="15" cy="13" r="1.7"/><circle cx="19" cy="5" r="1.7"/></svg></span><span class="dock-l">Forge</span>
+    </button>
+    <button class="dock-btn" data-action="galaxy" title="Link sentences into paragraphs (G)" hidden>
+      <span class="ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 12c0-1.5 1.8-2.2 3-1.2 1.8 1.5.6 4.6-2 5-3.6.6-6-2.6-5.2-6C8.8 5.4 13.4 3.6 17 5.6c4.4 2.4 4.6 8.8.6 12-4.6 3.6-11.8 1.8-14-3.8"/></svg></span><span class="dock-l">Galaxy</span>
+    </button>
+    <button class="dock-btn" data-action="eclipse" title="Practice: find the hidden word (E)" hidden>
+      <span class="ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16c-2.6-1.9-4-4.9-4-8s1.4-6.1 4-8z" fill="currentColor" stroke="none"/></svg></span><span class="dock-l">Eclipse</span>
+    </button>
+    <button class="dock-btn" data-action="drift" title="Autopilot through your sentences (D)" hidden>
+      <span class="ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="17" cy="7" r="3"/><path d="M14.8 9.2L4 20M12.4 6.4L6.5 12.3M17.6 11.6L11.7 17.5"/></svg></span><span class="dock-l">Drift</span>
+    </button>
+    <button class="dock-btn" data-action="log" title="Logbook (L)">
+      <span class="ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h10a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3V4z"/><path d="M6 17a3 3 0 0 1 3-3h10"/></svg></span><span class="dock-l">Log</span>
+    </button>
+    <button class="dock-btn dock-fit" data-action="fit" title="See your whole universe (0)" aria-label="See your whole universe">
+      <span class="ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg></span>
+    </button>
+  </nav>
+
+  <div class="drift" id="drift" hidden>
+    <div class="drift-kicker">Drifting through <span id="driftName"></span></div>
+    <p class="drift-text" id="driftText"></p>
+    <button class="btn ghost" id="driftStop">End drift <kbd>Esc</kbd></button>
+  </div>
+
+  <div class="popover" id="popover" hidden></div>
+  <div class="modal-root" id="modal" hidden></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
