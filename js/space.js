@@ -3,10 +3,11 @@
 // lines, and the glowing path of the sentence you're building.
 
 import { state, derived, anchorOf, hashStr } from './store.js';
+import { GALAXIES } from './seed.js';
 import { hexA } from './ui.js';
 
 const TAU = Math.PI * 2;
-const Z_MIN = 0.12, Z_MAX = 2.6;
+const Z_MIN = 0.015, Z_MAX = 2.6;
 const clampZ = (z) => Math.max(Z_MIN, Math.min(Z_MAX, z));
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -164,11 +165,21 @@ export function createSpace(canvas, handlers = {}) {
 
   function drawNebulae(now) {
     ctx.globalCompositeOperation = 'lighter';
-    for (const c of Object.values(state.categories)) {
-      if (!(derived.byCat[c.id] || []).length) continue;
+    // each galaxy you have reached glows as one soft disc when seen from afar
+    for (const gi of derived.galaxiesSeen || []) {
+      const g = GALAXIES[gi];
+      const [sx, sy] = w2s(g.x, g.y);
+      const R = 1500 * cam.z;
+      if (sx + R < 0 || sx - R > W || sy + R < 0 || sy - R > H) continue;
+      ctx.globalAlpha = Math.max(0.05, Math.min(0.32, 0.5 - cam.z));
+      ctx.drawImage(nebula(g.color), sx - R, sy - R, R * 2, R * 2);
+    }
+    for (const { gal, cat } of derived.regions || []) {
+      const c = state.categories[cat];
+      if (!c) continue;
       const t0 = nebulaAnim.get(c.id);
       const k = t0 ? Math.min(1, (now - t0) / 2600) : 1;
-      const a = anchorOf(c);
+      const a = anchorOf(c, gal);
       const [sx, sy] = w2s(a.x, a.y);
       const R = ((c.spread || 220) * 1.9 + 160) * cam.z;
       if (sx + R < 0 || sx - R > W || sy + R < 0 || sy - R > H) continue;
@@ -190,9 +201,21 @@ export function createSpace(canvas, handlers = {}) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
-    for (const c of Object.values(state.categories)) {
-      if (!(derived.byCat[c.id] || []).length) continue;
-      const a = anchorOf(c);
+    // galaxy names, legible when zoomed out far enough to see several
+    if (cam.z < 0.5) {
+      for (const gi of derived.galaxiesSeen || []) {
+        const g = GALAXIES[gi];
+        const [sx, sy] = w2s(g.x, g.y - 1300);
+        ctx.font = `600 ${Math.max(12, Math.min(26, 60 * cam.z + 8))}px ${FONT}`;
+        ctx.fillStyle = hexA(g.color, Math.min(0.9, 0.95 - cam.z));
+        ctx.fillText(`${g.id} · ${g.name.toUpperCase()}`, sx, sy);
+      }
+    }
+    if (cam.z < 0.14) { if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; return; }
+    for (const { gal, cat } of derived.regions || []) {
+      const c = state.categories[cat];
+      if (!c) continue;
+      const a = anchorOf(c, gal);
       const top = c.radius === 0 ? (c.spread || 170) + 30 : (c.spread || 220) * 0.95 + 46;
       const [sx, sy] = w2s(a.x, a.y - top);
       if (sx < -200 || sx > W + 200 || sy < -40 || sy > H + 40) continue;
@@ -375,7 +398,7 @@ export function createSpace(canvas, handlers = {}) {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
 
-    const showLit = z > 0.2, showUnlit = z > 0.5;
+    const showLit = z > 0.2, showUnlit = z > 0.3;
     const fontSize = Math.max(10.5, Math.min(15, 9 + 4.2 * z));
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -638,7 +661,7 @@ export function createSpace(canvas, handlers = {}) {
     flyTo(w.x + offsetX(zz), w.y + offsetY(zz), zz, dur);
   }
 
-  function fitIds(ids, { maxZ = 1.35, minZ = Z_MIN, dur = 1100, pad = 80 } = {}) {
+  function fitIds(ids, { maxZ = 1.35, minZ = Z_MIN, dur = 1100, pad = Math.min(80, W * 0.07) } = {}) {
     const pts = ids.map((id) => state.words[id]).filter(Boolean);
     if (!pts.length) { flyTo(0, 0, 0.5, dur); return; }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;

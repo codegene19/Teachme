@@ -79,3 +79,15 @@ export const NAMES = {
   gal1: ['Spiral', 'Veil', 'Whirl', 'Halo', 'Cradle', 'Wheel', 'Bloom', 'Tide'],
   gal2: ['Echoes', 'Mornings', 'Wishes', 'Embers', 'Lanterns', 'Promises', 'Questions', 'Small Talk'],
 };
+
+// CEFR galaxies. Each is its own cluster of sectors in the sky: A1 is home,
+// and the harder bands sit further and further out along a spiral.
+export const GALAXIES = [
+  { id: 'A1', name: 'Home Galaxy', color: '#8fb4ff', x: 0, y: 0 },
+  { id: 'A2', name: 'Neighbour Spiral', color: '#b693ff', x: 3300, y: -1100 },
+  { id: 'B1', name: 'Open Wheel', color: '#6ff2b4', x: 4700, y: 2300 },
+  { id: 'B2', name: 'Lantern Cluster', color: '#ffd25e', x: 1700, y: 5000 },
+  { id: 'C1', name: 'Deep Field', color: '#ff8fd6', x: -2500, y: 4900 },
+  { id: 'C2', name: 'Far Horizon', color: '#ff7c7c', x: -5200, y: 1500 },
+];
+export const galaxyIndex = (cefr) => Math.max(0, GALAXIES.findIndex((g) => g.id === cefr));

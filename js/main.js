@@ -16,6 +16,7 @@ import { initDrift } from './drift.js';
 import { initEclipse } from './eclipse.js';
 import { checkMissions, pendingMissions, doneCount, MISSIONS } from './missions.js';
 import { runGenesis } from './genesis.js';
+import { canGenerate } from './generate.js';
 
 load();
 setSoundEnabled(state.settings.sound);
@@ -122,13 +123,24 @@ on('settings', ({ key, value }) => {
 
 // ---------------------------------------------------------------- levels
 let levelPending = false;
-on('levelup', ({ level, ids }) => {
+on('levelup', ({ level, ids, newGalaxy }) => {
   const p = pack();
   const def = p.levels[level - 1];
   unlockAudio();
   space.arrive(ids);
-  setTimeout(() => space.fitIds(ids, { maxZ: 0.95, dur: 2200 }), 300);
+  // crossing into a new galaxy is a long flight: zoom out first, then in
+  if (newGalaxy) {
+    space.flyTo(space.cam.x, space.cam.y, 0.06, 1400);
+    setTimeout(() => space.fitIds(ids, { maxZ: 0.9, dur: 2600 }), 1500);
+  } else setTimeout(() => space.fitIds(ids, { maxZ: 0.95, dur: 2200 }), 300);
   const names = ids.map((id) => state.words[id].text);
+  if (newGalaxy) {
+    toast({
+      kind: 'level', title: `Galaxy ${newGalaxy.id} · ${newGalaxy.name}`, color: newGalaxy.color, timeout: 13000,
+      body: `You have crossed into ${newGalaxy.id}. Level ${level}, ${def.name}: ${def.goal} ${ids.length} new stars are waiting here.`,
+    });
+    return;
+  }
   toast({
     kind: 'level', title: `Level ${level} · ${def.name}`, timeout: 11000,
     body: h('div', {}, h('p', { class: 'toast-p' }, `${def.native} — ${def.goal}`),
@@ -194,7 +206,10 @@ const fmt = (n) => formatBig(Math.round(n));
 function updateHud() {
   const lp = levelProgress();
   $('#statLevelWrap').hidden = !lp;
-  if (lp) countUp($('#statLevel'), lp.level, fmt);
+  if (lp) {
+    $('#statLevel').textContent = lp.galaxy.id;
+    $('#statLevelLabel').textContent = `level ${lp.level}`;
+  }
   countUp($('#statStars'), derived.litCount, fmt);
   countUp($('#statSectors'), derived.sectors, fmt);
   countUp($('#statConst'), count(state.constellations), fmt);
@@ -219,7 +234,7 @@ function updateMissionCard() {
       h('span', { class: 'goal-l' }, v >= n ? '✦ ' : '', label), h('span', { class: 'goal-n' }, `${Math.min(v, n)}/${n}`),
       h('span', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, (v / n) * 100)}%` } })));
     fill(el,
-      h('span', { class: 'kicker' }, `${pack().name} · Level ${lp.level} of ${lp.total}`),
+      h('span', { class: 'kicker' }, `${pack().name} · ${lp.galaxy.id} · Level ${lp.level}/${lp.total}`),
       h('span', { class: 'mission-title' }, lp.def.name, h('span', { class: 'native' }, lp.def.native)),
       h('span', { class: 'mission-how' }, lp.def.goal),
       row('Light new stars', lp.lit, lp.needLit),
@@ -248,7 +263,7 @@ const UNLOCKS = {
   galaxy: {
     name: 'Galaxy', short: 'link sentences into paragraphs', title: 'Galaxies are online', open: () => app.galaxy.open(),
     body: 'Link sentences with bridge words — and, but, because — to build paragraphs.',
-    test: () => count(state.constellations) >= 1,
+    test: () => count(state.constellations) >= 1 || (hasLevels() && state.level >= 2 && canGenerate()),
   },
   eclipse: {
     name: 'Eclipse', short: 'one word goes dark; find it', title: 'Eclipse is online', open: () => app.eclipse.start(),
@@ -257,8 +272,8 @@ const UNLOCKS = {
   },
   drift: {
     name: 'Drift', short: 'fly through your sentences, read aloud', title: 'Drift is online', open: () => app.drift.start(),
-    body: 'Autopilot: fly through your sentences while they are read aloud.',
-    test: () => count(state.constellations) >= 1,
+    body: 'Autopilot: fly through fresh sentences and stories while they are read aloud.',
+    test: () => count(state.constellations) >= 1 || (hasLevels() && state.level >= 2 && canGenerate()),
   },
 };
 
@@ -367,6 +382,8 @@ document.addEventListener('keydown', (e) => {
   else if (k === '0') space.fitAll();
   else if (k === 's' && app.forge.isOpen()) app.forge.shuffle();
   else if (k === 'v' && app.forge.isOpen()) app.forge.speak();
+  else if (k === 'r' && unlocked('forge')) app.forge.surprise();
+  else if (k === 't' && unlocked('galaxy')) app.galaxy.writeStory();
   else return;
   e.preventDefault();
 });

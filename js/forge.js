@@ -7,8 +7,9 @@ import {
 } from './store.js';
 import {
   sentenceSegments, sentenceText, countTokens, formatBig, parseInput, formulaParts, pickRandom, optionsFor,
-  personAt, surface, slotOf,
+  personAt, surface, slotOf, clauseTenses,
 } from './language.js';
+import { randomSentence, canGenerate } from './generate.js';
 import { app, h, fill, $, icon, toast, showPopover, hidePopover, isPopoverOpen } from './ui.js';
 import { chime, arpeggio, speak, unlockAudio, errorSound } from './sfx.js';
 import { speechOpts } from './panels.js';
@@ -26,7 +27,7 @@ const surfaceAt = (i, id) => {
   const toks = F().tokens;
   const t = id ? { ...toks[i], wordId: id } : toks[i];
   const probe = id ? toks.map((x, k) => (k === i ? t : x)) : toks;
-  return surface(state.words[t.wordId], t, personAt(probe, state.words, i));
+  return surface(state.words[t.wordId], t, personAt(probe, state.words, i), clauseTenses(probe, state.words)[i]);
 };
 
 /** A word in the sentence, with its English gloss underneath when enabled. */
@@ -70,6 +71,7 @@ export function initForge() {
     h('div', { class: 'sheet-actions' },
       h('button', { class: 'btn', onclick: shuffle, title: 'Shuffle variables (S)' }, icon('shuffle', 16), h('span', {}, 'Shuffle')),
       h('button', { class: 'btn', onclick: speakNow, title: 'Hear it (V)' }, icon('speak', 16), h('span', {}, 'Hear')),
+      h('button', { class: 'btn accent-btn', onclick: surprise, title: 'A new sentence from your patterns (R)' }, icon('spark', 16), h('span', {}, 'Surprise me')),
       h('div', { class: 'end-group', role: 'group', 'aria-label': 'End mark' }, endEls),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn ghost', onclick: newDraft, title: 'Start a new sentence' }, h('span', {}, 'New')),
@@ -78,7 +80,7 @@ export function initForge() {
 
   on('change', () => { if (isOpen()) render(); });
   on('reset', () => { popIndex = -1; hidePopover(); });
-  app.forge = { open, close, toggle, isOpen, addWord: addWordToken, loadConstellation, loadBlueprint, shuffle, speak: speakNow, render };
+  app.forge = { open, close, toggle, isOpen, addWord: addWordToken, loadConstellation, loadBlueprint, shuffle, speak: speakNow, surprise, render };
 }
 
 export const isOpen = () => !root.hidden;
@@ -235,7 +237,7 @@ function openChipMenu(i, anchor) {
       }, surfaceAt(i, id), state.settings.gloss && state.words[id].gloss ? h('small', {}, state.words[id].gloss) : null)))
       : null,
     w.forms ? h('p', { class: 'pop-note' }, h('b', {}, w.text), ` (${w.gloss}) — `,
-      t.inf ? 'shown in the infinitive, as it follows another verb.' : `conjugated for ${personLabel(personAt(F().tokens, state.words, i))}.`) : null,
+      t.inf ? 'shown in the infinitive, as it follows another verb.' : `conjugated for ${personLabel(personAt(F().tokens, state.words, i))}, ${tenseLabel(clauseTenses(F().tokens, state.words)[i])}.`) : null,
     w.cat === 'uncharted' ? h('p', { class: 'pop-note' }, 'This star has no sector yet — give it one so it can become a variable.') : null,
     !t.var && w.cat !== 'uncharted' && opts.length < 2
       ? h('p', { class: 'pop-note' }, `Only one ${c.label} star is lit so far. Discover more to make this spin.`) : null,
@@ -250,6 +252,12 @@ function openChipMenu(i, anchor) {
       h('button', { class: 'icon-btn small', 'aria-label': 'Move right', disabled: i === F().tokens.length - 1, onclick: () => { moveToken(i, i + 1); popIndex = -1; openChipMenu(i + 1, chipEl(i + 1)); } }, icon('right', 16)),
       h('button', { class: 'icon-btn small danger', 'aria-label': 'Remove word', onclick: () => { hidePopover(); removeToken(i); } }, icon('trash', 16))));
   showPopover(anchor || chipEl(i), body, { onClose: () => { popIndex = -1; } });
+}
+
+function tenseLabel(t) {
+  const names = pack()?.tenseNames;
+  const why = t === 'pres' ? '' : ' — set by the time word';
+  return `${names?.[t] || t}${why}`;
 }
 
 function personLabel(p) {
@@ -445,6 +453,27 @@ function toGalaxy() {
   if (!f.tokens.length) { toast({ kind: 'info', title: 'Nothing to send', body: 'Forge a sentence first.' }); return; }
   app.galaxy.addPart({ tokens: cloneTokens(f.tokens), end: f.end, name: f.name || 'Forge sentence' });
   app.galaxy.open();
+}
+
+/** A brand-new sentence from any pattern you have reached, with every variable spinning. */
+export function surprise() {
+  const s = canGenerate() && randomSentence();
+  if (!s) {
+    toast({ kind: 'info', title: 'Not enough stars yet', body: 'Light a few more stars so a full pattern can form.' });
+    return;
+  }
+  state.forge = { tokens: s.tokens, end: s.end, name: s.name, editingId: null };
+  bumpStat('made');
+  bumpSeen(s.tokens.map((t) => t.wordId));
+  commit();
+  if (!isOpen()) open({ fit: false });
+  root.scrollTop = 0;
+  unlockAudio();
+  arpeggio(s.tokens.map((t) => wordOf(t).cat), 0.06);
+  sentenceEl.classList.remove('warp');
+  void sentenceEl.offsetWidth;
+  sentenceEl.classList.add('warp');
+  app.space.fitIds(s.tokens.map((t) => t.wordId), { maxZ: 1.1, dur: 900 });
 }
 
 export function loadConstellation(id) {

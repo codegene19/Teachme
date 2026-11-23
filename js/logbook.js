@@ -3,6 +3,7 @@
 import {
   state, derived, on, deleteConstellation, deleteGalaxy, resolveBlueprint, blueprints, pack, levelProgress,
 } from './store.js';
+import { GALAXIES } from './seed.js';
 import { sentenceText, paragraphText, countTokens, countParagraph, formatBig } from './language.js';
 import { app, h, fill, $, icon } from './ui.js';
 import { MISSIONS, doneCount } from './missions.js';
@@ -146,12 +147,16 @@ function journey() {
   if (!lp) return [];
   return [
     h('h4', { class: 'log-sub' }, `${p.name} · ${p.english}`),
-    h('ol', { class: 'level-list' }, p.levels.map((L, i) => {
+    h('ol', { class: 'level-list' }, p.levels.flatMap((L, i) => {
       const n = i + 1;
+      const g = GALAXIES.find((x) => x.id === L.cefr) || GALAXIES[0];
+      const header = i === 0 || p.levels[i - 1].cefr !== L.cefr
+        ? h('li', { class: 'galaxy-head', style: { '--c': g.color } }, h('b', {}, `Galaxy ${g.id}`), h('span', {}, g.name))
+        : null;
       const done = n < state.level || (n === state.level && state.journeyDone);
       const current = n === state.level && !done;
       const words = derived.list.filter((w) => w.seed && w.lvl === n);
-      return h('li', { class: `lvl ${done ? 'done' : current ? 'current' : 'locked'}` },
+      return [header, h('li', { class: `lvl ${done ? 'done' : current ? 'current' : 'locked'}` },
         h('span', { class: 'lvl-n' }, done ? '✦' : String(n)),
         h('div', { class: 'lvl-main' },
           h('b', {}, L.name, h('span', { class: 'native' }, L.native)),
@@ -161,7 +166,7 @@ function journey() {
             : h('small', { class: 'dim' }, `${words.length} stars waiting beyond the edge`),
           current ? h('div', { class: 'lvl-goals' },
             h('small', {}, `Light ${Math.min(lp.lit, lp.needLit)}/${lp.needLit} stars · make ${Math.min(lp.practice, lp.needPractice)}/${lp.needPractice} sentences`),
-            h('span', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, ((Math.min(lp.lit, lp.needLit) / lp.needLit) * 50) + ((Math.min(lp.practice, lp.needPractice) / lp.needPractice) * 50))}%` } }))) : null));
+            h('span', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, ((Math.min(lp.lit, lp.needLit) / lp.needLit) * 50) + ((Math.min(lp.practice, lp.needPractice) / lp.needPractice) * 50))}%` } }))) : null))];
     })),
     h('h4', { class: 'log-sub' }, 'Missions'),
   ];

@@ -1,7 +1,7 @@
 // The universe: every star (word), sector (category), constellation
 // (sentence template) and galaxy (paragraph) — persisted to localStorage.
 
-import { CATEGORY_DEFS, UNCHARTED_DEF, CUSTOM_COLORS, NAMES } from './seed.js';
+import { CATEGORY_DEFS, UNCHARTED_DEF, CUSTOM_COLORS, NAMES, GALAXIES, galaxyIndex } from './seed.js';
 import { PACKS } from './packs/index.js';
 import { norm, fold, cleanWordText, parseInput, countTokens, cap, setGrammar } from './language.js';
 
@@ -59,6 +59,7 @@ function buildLookup(entries) {
   for (const e of entries) {
     add(e.text, e.forms ? { id: e.id, inf: true } : { id: e.id });
     e.forms?.forEach((f, i) => add(f, { id: e.id, person: i }));
+    for (const [tense, list] of Object.entries(e.tenses || {})) list.forEach((f, i) => add(f, { id: e.id, person: i, tense }));
     e.num?.forEach((f) => add(f, { id: e.id }));
   }
   return (phrase) => exact.get(norm(phrase)) || loose.get(fold(norm(phrase))) || null;
@@ -68,13 +69,17 @@ const edgeCache = new Map();
 function edgesFor(pack) {
   if (!pack) return [];
   if (edgeCache.has(pack.id)) return edgeCache.get(pack.id);
-  const resolve = buildLookup(pack.words.map((w) => ({ id: packWordId(pack.id, w.t), text: w.t, forms: w.f, num: w.n })));
+  const resolve = buildLookup(pack.words.map((w) => ({ id: packWordId(pack.id, w.t), text: w.t, forms: w.f, num: w.n, tenses: w.ft })));
   const edges = [];
   for (const s of pack.examples || []) {
     const { tokens } = parseInput(s, resolve);
     for (let i = 0; i + 1 < tokens.length; i++) {
       if (tokens[i].wordId && tokens[i + 1].wordId) edges.push([tokens[i].wordId, tokens[i + 1].wordId]);
     }
+  }
+  // Words of the same level are linked in a chain, so every star has neighbours.
+  for (let i = 0; i + 1 < pack.words.length; i++) {
+    if (pack.words[i].l && pack.words[i].l === pack.words[i + 1].l) edges.push([packWordId(pack.id, pack.words[i].t), packWordId(pack.id, pack.words[i + 1].t)]);
   }
   edgeCache.set(pack.id, edges);
   return edges;
@@ -118,12 +123,13 @@ function addPackWords(s, p) {
     const id = packWordId(p.id, pw.t);
     const grammar = {
       text: pw.t, cat: pw.c, lvl: pw.l || 0, gloss: pw.en || '',
-      forms: pw.f || null, num: pw.n || null, person: pw.p ?? null, also: pw.also || null,
-      comma: !!pw.comma, joinComma: !!pw.joinComma,
+      forms: pw.f || null, tenses: pw.ft || null, tense: pw.tense || null, num: pw.n || null, person: pw.p ?? null,
+      also: pw.also || null, comma: !!pw.comma, joinComma: !!pw.joinComma, gal: p.levels ? galaxyIndex(pw.cefr) : 0,
+      kind: pw.k || null, obj: pw.o || null, acts: pw.acts || null,
     };
     const ex = s.words[id];
     if (ex) {
-      const moved = ex.cat !== grammar.cat;
+      const moved = ex.cat !== grammar.cat || (ex.gal || 0) !== grammar.gal;
       Object.assign(ex, grammar, { seed: true });
       if (moved) { ex.x = undefined; ex.y = undefined; }
     } else {
@@ -162,9 +168,11 @@ function migrate(s) {
   return s;
 }
 
-export function anchorOf(c) {
+/** Where a sector sits: its place on the ring, inside galaxy `gal` (A1 = 0). */
+export function anchorOf(c, gal = 0) {
   const a = ((c?.angle || 0) * Math.PI) / 180;
-  return { x: Math.cos(a) * (c?.radius || 0), y: Math.sin(a) * (c?.radius || 0) };
+  const g = GALAXIES[gal] || GALAXIES[0];
+  return { x: g.x + Math.cos(a) * (c?.radius || 0), y: g.y + Math.sin(a) * (c?.radius || 0) };
 }
 
 // Stars are placed deterministically inside their sector, keeping a little
@@ -172,7 +180,7 @@ export function anchorOf(c) {
 const MIN_DX = 78, MIN_DY = 50;
 function placeWord(s, w) {
   const c = s.categories[w.cat] || s.categories.uncharted;
-  const a0 = anchorOf(c);
+  const a0 = anchorOf(c, w.gal || 0);
   const spread = c.spread || 220;
   const r = rng(hashStr(w.id + ':' + w.cat));
   const others = Object.values(s.words).filter((o) => o !== w && o.x != null);
@@ -219,6 +227,14 @@ function rebuild() {
     if (w.lit) for (const extra of w.also || []) (derived.orbit[extra] ||= []).push(w.id);
   }
   derived.litCount = lit;
+  // Which sectors of which galaxies are glowing (have lit stars).
+  const regions = new Map();
+  for (const w of derived.list) {
+    if (!w.lit) continue;
+    const key = `${w.gal || 0}:${w.cat}`;
+    regions.set(key, (regions.get(key) || 0) + 1);
+  }
+  derived.regions = [...regions.keys()].map((k) => { const [gal, cat] = k.split(':'); return { gal: Number(gal), cat }; });
 
   const adj = new Map();
   const link = (a, b) => {
@@ -242,6 +258,7 @@ function rebuild() {
     else if ([...(adj.get(w.id) || [])].some((n) => words[n].lit)) disc.add(w.id);
   }
   derived.discoverable = disc;
+  derived.galaxiesSeen = [...new Set(derived.list.filter((w) => w.lit || disc.has(w.id)).map((w) => w.gal || 0))];
 
   derived.reach = Object.values(state.constellations).reduce((sum, c) => sum + countTokens(c.tokens, words, derived.orbit), 0);
   derived.sectors = Object.keys(categories).filter((id) => (derived.byCat[id] || []).length > 0).length;
@@ -372,6 +389,7 @@ export function levelProgress() {
   const needPractice = def.need?.practice ?? 6 + 3 * n;
   return {
     level: n, total: p.levels.length, def, ids, lit, needLit, practice, needPractice,
+    galaxy: GALAXIES[galaxyIndex(def.cefr)], galaxyIndex: galaxyIndex(def.cefr),
     done: lit >= needLit && practice >= needPractice, final: n === p.levels.length,
     next: p.levels[n] || null,
   };
@@ -388,8 +406,10 @@ export function levelUp() {
   state.level = prog.level + 1;
   state.levelBase = practiceTotal();
   const ids = derived.list.filter((w) => w.seed && w.lvl === state.level).map((w) => w.id);
+  const next = pack().levels[state.level - 1];
+  const newGalaxy = next.cefr !== prog.def.cefr ? GALAXIES[galaxyIndex(next.cefr)] : null;
   commit();
-  emit('levelup', { level: state.level, ids });
+  emit('levelup', { level: state.level, ids, newGalaxy });
   return state.level;
 }
 
@@ -523,6 +543,7 @@ const cloneTokens = (tokens) => tokens.map((t) => {
   if (t.slot) c.slot = t.slot;
   if (t.inf) c.inf = true;
   if (t.person != null) c.person = t.person;
+  if (t.tense) c.tense = t.tense;
   return c;
 });
 

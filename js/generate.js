@@ -1,0 +1,101 @@
+// Generators: fresh sentences and short stories built from the patterns of
+// every level you have reached, filled with the stars you have lit.
+
+import { state, derived, blueprints, resolveBlueprint } from './store.js';
+import { optionsFor, pickRandom, slotOf } from './language.js';
+
+/** Patterns you can build right now, favouring the newest (most complex) ones. */
+function patterns({ statementsOnly = false } = {}) {
+  return blueprints()
+    .filter((bp) => (!statementsOnly || bp.end === '.') && resolveBlueprint(bp))
+    .map((bp) => ({ bp, weight: Math.pow(bp.l || 1, 1.3) }));
+}
+
+function weighted(list) {
+  const total = list.reduce((s, x) => s + x.weight, 0);
+  let r = Math.random() * total;
+  for (const x of list) { r -= x.weight; if (r <= 0) return x.bp; }
+  return list[list.length - 1]?.bp;
+}
+
+const tenseOf = (id) => state.words[id]?.tense || 'pres';
+
+/**
+ * One random sentence. `who` keeps the subject; `tense` keeps every time word
+ * in the same tense family, so a story stays in one timeline.
+ */
+export function randomSentence({ who = null, tense = null, statementsOnly = false } = {}) {
+  const list = patterns({ statementsOnly });
+  if (!list.length) return null;
+  const bp = weighted(list);
+  const r = resolveBlueprint(bp);
+  const W = state.words;
+  const things = derived.orbit.thing || [];
+  // a verb is usable only if at least one lit thing makes sense after it
+  const usable = (id) => !W[id].obj || things.some((t) => W[id].obj.includes(W[t].kind));
+  let firstWho = true;
+  const tokens = [];
+  for (const t of r.tokens) {
+    if (!t.var) { tokens.push({ ...t }); continue; }
+    let opts = optionsFor(t, W, derived.orbit);
+    const slot = slotOf(t, W);
+    const prev = W[tokens[tokens.length - 1]?.wordId];
+    if (slot === 'action') {
+      // after "voglio / posso…" the second verb is a real action, not another modal
+      if (prev?.cat === 'modal') opts = opts.filter((id) => W[id].cat !== 'modal');
+      if (prev?.acts) opts = opts.filter((id) => prev.acts.includes(W[id].text));
+      opts = opts.filter(usable);
+    }
+    if (slot === 'thing') {
+      // the object must suit the nearest verb before it in this clause
+      let verb = null;
+      for (let j = tokens.length - 1; j >= 0 && !verb; j--) {
+        const w = W[tokens[j].wordId];
+        if (w?.cat === 'link') break;
+        if (w?.obj) verb = w;
+      }
+      if (verb) {
+        const fit = opts.filter((id) => verb.obj.includes(W[id].kind));
+        if (fit.length) opts = fit;
+      }
+    }
+    if (!opts.length) opts = optionsFor(t, W, derived.orbit);
+    let pick = pickRandom(opts);
+    if (slot === 'who' && firstWho && who && opts.includes(who)) pick = who;
+    // a second subject in the same sentence is someone else
+    if (slot === 'who' && !firstWho && opts.length > 1) pick = pickRandom(opts.filter((id) => id !== tokens.find((x) => W[x.wordId]?.cat === 'who')?.wordId));
+    if (slot === 'who') firstWho = false;
+    if (slot === 'time' && tense) {
+      const same = opts.filter((id) => tenseOf(id) === tense);
+      if (same.length) pick = pickRandom(same);
+    }
+    tokens.push({ ...t, wordId: pick || t.wordId });
+  }
+  return { tokens, end: r.end, name: bp.name };
+}
+
+export const canGenerate = () => patterns().length > 0;
+
+/** A short story: one subject, one timeline, sentences joined by your bridge words. */
+export function randomStory(length = 3) {
+  if (!canGenerate()) return null;
+  const whos = derived.orbit.who || [];
+  const who = pickRandom(whos);
+  const times = derived.orbit.time || [];
+  const withTense = times.filter((id) => tenseOf(id) !== 'pres');
+  const tense = withTense.length && Math.random() < 0.65 ? tenseOf(pickRandom(withTense)) : 'pres';
+  const parts = [];
+  for (let i = 0; i < length; i++) {
+    const s = randomSentence({ who: i === 0 || Math.random() < 0.6 ? who : null, tense, statementsOnly: true });
+    if (s) parts.push({ tokens: s.tokens, end: s.end, name: s.name });
+  }
+  // join two sentences with a bridge word only when neither already has one, so nothing runs on
+  const links = derived.orbit.link || [];
+  const hasLink = (p) => p.tokens.some((t) => state.words[t.wordId]?.cat === 'link');
+  const joins = [];
+  parts.slice(1).forEach((p, i) => {
+    const free = links.length && !hasLink(p) && !hasLink(parts[i]) && !joins[i - 1];
+    joins.push(free && Math.random() < 0.6 ? pickRandom(links) : null);
+  });
+  return { parts, joins };
+}

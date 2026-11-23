@@ -39,7 +39,7 @@ export function parseInput(text, resolve) {
   let i = 0;
   while (i < parts.length) {
     let hit = null;
-    for (let len = Math.min(4, parts.length - i); len >= 1; len--) {
+    for (let len = Math.min(6, parts.length - i); len >= 1; len--) {
       const phrase = parts.slice(i, i + len).join(' ');
       const info = resolve(phrase);
       if (info) { hit = { phrase, info, len }; break; }
@@ -48,6 +48,7 @@ export function parseInput(text, resolve) {
       const tok = { text: hit.phrase, wordId: hit.info.id };
       if (hit.info.inf) tok.inf = true;
       if (hit.info.person != null) tok.person = hit.info.person;
+      if (hit.info.tense) tok.tense = hit.info.tense;
       tokens.push(tok);
       i += hit.len;
     } else { tokens.push({ text: parts[i], wordId: null }); i += 1; }
@@ -64,10 +65,42 @@ export function personAt(tokens, words, i) {
   return tokens[i]?.person ?? 0;
 }
 
+/**
+ * The tense of every token. A clause (split at LINK words) takes its tense
+ * from its time word: "ieri" → past, "a quei tempi" → imperfect, "domani" or
+ * "oggi" → present. A clause without one inherits the previous clause's tense,
+ * so "Ieri ho mangiato… perché tu hai portato…" stays in the past.
+ */
+export function clauseTenses(tokens, words, start = 'pres') {
+  const out = new Array(tokens.length).fill(start);
+  let prev = start;
+  let i = 0;
+  while (i < tokens.length) {
+    let j = i + 1;
+    while (j < tokens.length && words[tokens[j]?.wordId]?.cat !== 'link') j++;
+    let tense = null;
+    for (let k = i; k < j && !tense; k++) {
+      const w = words[tokens[k]?.wordId];
+      if (w?.cat === 'time') tense = w.tense || 'pres';
+    }
+    for (let k = i; k < j && !tense; k++) if (tokens[k]?.tense) tense = tokens[k].tense;
+    tense = tense || prev;
+    for (let k = i; k < j; k++) out[k] = tense;
+    prev = tense;
+    i = j;
+  }
+  out.last = prev;
+  return out;
+}
+
 /** The form of a word as it appears in this slot. */
-export function surface(word, token = {}, person = 0) {
+export function surface(word, token = {}, person = 0, tense = 'pres') {
   if (!word) return '';
-  if (word.forms) return token.inf ? word.text : (word.forms[person] ?? word.text);
+  if (word.forms) {
+    if (token.inf) return word.text;
+    const table = tense !== 'pres' && word.tenses?.[tense] ? word.tenses[tense] : word.forms;
+    return table[person] ?? word.text;
+  }
   if (word.num) return word.num[person >= 3 ? 1 : 0] ?? word.text;
   return word.text;
 }
@@ -75,23 +108,26 @@ export function surface(word, token = {}, person = 0) {
 const opener = (end) => (G.invert && end === '?' ? '¿' : G.invert && end === '!' ? '¡' : '');
 
 /** One segment per token: { text, sep, wordId, index, isVar, cat, slot, gloss }. */
-export function sentenceSegments(tokens, words, { capitalize = true, end } = {}) {
+export function sentenceSegments(tokens, words, { capitalize = true, end, tense: startTense = 'pres' } = {}) {
   const segs = [];
+  const tenses = clauseTenses(tokens, words, startTense);
   tokens.forEach((t, i) => {
     const w = words[t.wordId];
     if (!w) return;
     let sep = segs.length ? ' ' : '';
     if (segs.length && w.cat === 'link' && w.comma) sep = ', ';
     const person = personAt(tokens, words, i);
-    let text = surface(w, t, person);
+    let text = surface(w, t, person, tenses[i]);
     if (!segs.length && capitalize) text = cap(text);
     segs.push({
       kind: 'word', text, sep, wordId: w.id, index: i, isVar: !!t.var, cat: w.cat,
       slot: t.slot || w.cat, gloss: w.gloss || '', inflected: text.toLowerCase() !== w.text.toLowerCase(),
+      tense: tenses[i], person,
     });
   });
   const open = capitalize && segs.length ? opener(end) : '';
   if (open) segs.unshift({ kind: 'punct', text: open, sep: '' });
+  segs.tense = tenses.last;
   return segs;
 }
 
@@ -110,8 +146,11 @@ export function sentenceText(tokens, words, end = '.') {
 export function paragraphSegments(parts, joins, words) {
   const segs = [];
   let capNext = true;
+  let tense = 'pres';
   parts.forEach((p, pi) => {
-    const ss = sentenceSegments(p.tokens, words, { capitalize: capNext, end: p.end });
+    // a sentence with no time word of its own continues the story's timeline
+    const ss = sentenceSegments(p.tokens, words, { capitalize: capNext, end: p.end, tense });
+    tense = ss.tense;
     ss.forEach((s, k) => {
       s.partIndex = pi;
       if (k === 0 && segs.length) s.sep = ' ';

@@ -13,6 +13,7 @@ import { app, h, fill, $, icon, toast, showPopover, hidePopover } from './ui.js'
 import { chime, arpeggio, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
 import { glossed } from './forge.js';
+import { randomStory, canGenerate } from './generate.js';
 
 const root = $('#galaxy');
 let paraEl, partsEl, countEl, countLabel, nameInput, addSel, saveBtn, editTag;
@@ -43,12 +44,13 @@ export function initGalaxy() {
     h('div', { class: 'sheet-actions' },
       h('button', { class: 'btn', onclick: shuffleAll }, icon('shuffle', 16), h('span', {}, 'Shuffle all')),
       h('button', { class: 'btn', onclick: speakAll }, icon('speak', 16), h('span', {}, 'Hear')),
+      h('button', { class: 'btn accent-btn', onclick: () => writeStory() }, icon('spark', 16), h('span', {}, 'Write a story')),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn ghost', onclick: newDraft }, 'New'),
       saveBtn));
 
   on('change', () => { if (isOpen()) render(); });
-  app.galaxy = { open, close, toggle, isOpen, addPart, loadGalaxy };
+  app.galaxy = { open, close, toggle, isOpen, addPart, loadGalaxy, writeStory };
 }
 
 export const isOpen = () => !root.hidden;
@@ -97,7 +99,7 @@ function render() {
   // the paragraph itself
   const segs = paragraphSegments(g.parts, g.joins, state.words);
   if (!segs.length) {
-    fill(paraEl, h('span', { class: 'placeholder' }, 'Add two or more sentences below. The link between them is a variable too — a full stop, or a bridge star like “because”, “but”, “so”.'));
+    fill(paraEl, h('span', { class: 'placeholder' }, 'Press “Write a story” for a paragraph built from your stars, or add two or more sentences below. The link between them is a variable too — a full stop, or a bridge star like “because”, “but”, “so”.'));
   } else {
     fill(paraEl, ...segs.flatMap((s) => {
       if (s.kind === 'punct') return [h('span', { class: 'end' }, s.text)];
@@ -288,6 +290,27 @@ function newDraft() {
   state.galaxyDraft = emptyGalaxy();
   hidePopover();
   commit();
+}
+
+/** A short story from your stars: one subject, one timeline, joined by bridge words. */
+export function writeStory(length = 3) {
+  const story = canGenerate() && randomStory(length);
+  if (!story || !story.parts.length) {
+    toast({ kind: 'info', title: 'Not enough stars yet', body: 'Light a few more stars so full patterns can form.' });
+    return;
+  }
+  state.galaxyDraft = { parts: story.parts, joins: story.joins, name: cosmicName('galaxy'), editingId: null };
+  bumpStat('made');
+  bumpSeen(pathIds());
+  commit();
+  if (!isOpen()) open();
+  root.scrollTop = 0;
+  unlockAudio();
+  arpeggio(pathIds().map((id) => state.words[id]?.cat), 0.05);
+  paraEl.classList.remove('warp');
+  void paraEl.offsetWidth;
+  paraEl.classList.add('warp');
+  app.space.fitIds(pathIds(), { maxZ: 1, dur: 1000 });
 }
 
 export function loadGalaxy(id) {

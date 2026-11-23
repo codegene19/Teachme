@@ -6,6 +6,7 @@ import { sentenceSegments, paragraphSegments, pickRandom, optionsFor } from './l
 import { app, h, fill, $, toast, sleep } from './ui.js';
 import { chime, speak, stopSpeaking, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
+import { randomSentence, randomStory, canGenerate } from './generate.js';
 
 const root = $('#drift');
 const textEl = $('#driftText');
@@ -28,6 +29,18 @@ function randomize(tokens) {
 function nextScene() {
   const consts = Object.values(state.constellations);
   const gals = Object.values(state.galaxies);
+  // Mostly brand-new sentences and stories from your patterns; sometimes your saved ones.
+  const roll = Math.random();
+  if (canGenerate() && (roll < 0.35 || !consts.length)) {
+    const story = roll < 0.15 && randomStory(Math.random() < 0.5 ? 2 : 3);
+    if (story && story.parts.length) return { name: 'a new story', segs: paragraphSegments(story.parts, story.joins, state.words) };
+    const s = randomSentence();
+    if (s) {
+      const segs = sentenceSegments(s.tokens, state.words, { end: s.end });
+      segs.push({ kind: 'punct', text: s.end, sep: '' });
+      return { name: s.name, segs };
+    }
+  }
   const useGalaxy = gals.length && Math.random() < 0.3;
   if (useGalaxy) {
     const g = pickRandom(gals);
@@ -45,8 +58,8 @@ function nextScene() {
 
 export async function start() {
   if (running) return;
-  if (!Object.keys(state.constellations).length) {
-    toast({ kind: 'info', title: 'Nothing to drift through yet', body: 'Save a constellation in the Forge first.' });
+  if (!Object.keys(state.constellations).length && !canGenerate()) {
+    toast({ kind: 'info', title: 'Nothing to drift through yet', body: 'Light a few more stars so a pattern can form.' });
     return;
   }
   unlockAudio();

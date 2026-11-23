@@ -5,6 +5,7 @@ import {
   resetUniverse, exportUniverse, importUniverse, findWord, pack,
 } from './store.js';
 import { PACKS, PACK_ORDER } from './packs/index.js';
+import { GALAXIES } from './seed.js';
 import { app, h, fill, $, icon, openModal, closeModal, toast } from './ui.js';
 import { speak, getVoices, speechSupported, setSoundEnabled, voiceFor, voiceStatus, onVoicesChanged } from './sfx.js';
 
@@ -149,7 +150,8 @@ function renderCard() {
       h('span', { class: 'card-text' }, w.text),
       h('button', { class: 'icon-btn speak-btn', 'aria-label': `Say “${w.text}”`, onclick: () => speak(w.text, speechOpts()) }, icon('speak', 20))),
     w.gloss ? h('div', { class: 'card-gloss' }, w.forms ? `to ${w.gloss}` : w.gloss,
-      w.lvl ? h('span', { class: 'lvl-badge' }, `level ${w.lvl}`) : null) : null,
+      w.lvl ? h('span', { class: 'lvl-badge' }, `${GALAXIES[w.gal || 0].id} · level ${w.lvl}`) : null) : null,
+    w.tense ? h('p', { class: 'tense-note' }, `Puts its clause in the ${pack()?.tenseNames?.[w.tense] || w.tense}.`) : null,
     w.forms ? conjugation(w) : null,
     w.num && w.num[0] !== w.num[1] ? h('div', { class: 'forms-row' },
       h('span', {}, h('small', {}, 'one'), ' ', w.num[0]), h('span', {}, h('small', {}, 'many'), ' ', w.num[1])) : null,
@@ -175,15 +177,28 @@ function renderCard() {
       !w.seed ? h('button', { class: 'btn ghost', onclick: () => editWordDialog(w.id) }, icon('edit', 16), 'Edit') : null));
 }
 
-// Present tense, one tap per form to hear it.
+// Every tense the verb knows; tap a form to hear it.
+let conjTense = 'pres';
 function conjugation(w) {
   const persons = pack()?.persons || ['1st', '2nd', '3rd', '1st pl.', '2nd pl.', '3rd pl.'];
-  return h('div', { class: 'conj' },
-    h('div', { class: 'field-label' }, 'Present tense — changes with the subject'),
-    h('div', { class: 'conj-grid' }, w.forms.map((f, i) => h('button', {
+  const names = pack()?.tenseNames || { pres: 'present' };
+  const tenses = ['pres', ...['past', 'imp', 'fut'].filter((t) => w.tenses?.[t])];
+  if (!tenses.includes(conjTense)) conjTense = 'pres';
+  const table = conjTense === 'pres' ? w.forms : w.tenses[conjTense];
+  const wrap = h('div', { class: 'conj' });
+  const draw = () => fill(wrap,
+    tenses.length > 1
+      ? h('div', { class: 'tense-tabs', role: 'tablist' }, tenses.map((t) => h('button', {
+        class: 'tense-tab' + (t === conjTense ? ' active' : ''), role: 'tab', 'aria-selected': String(t === conjTense),
+        onclick: () => { conjTense = t; wrap.replaceWith(conjugation(w)); },
+      }, names[t] || t)))
+      : h('div', { class: 'field-label' }, 'Present tense — changes with the subject'),
+    h('div', { class: 'conj-grid' }, table.map((f, i) => h('button', {
       class: 'conj-cell', title: `Say “${persons[i].split(' / ')[0]} ${f}”`,
       onclick: () => speak(`${persons[i].split(' / ')[0]} ${f}`, speechOpts()),
     }, h('small', {}, persons[i]), h('b', {}, f)))));
+  draw();
+  return wrap;
 }
 
 // ---------------------------------------------------------- sector picker

@@ -39,27 +39,34 @@ The verb follows the subject: switch *io* to *noi* and *voglio* becomes *vogliam
 
 Hidden constellations (*First Light, Curiosity, Binary Star…*) appear in the sky once you've lit every star they need. Seventeen missions guide you from one word to a million sentences within reach.
 
-### Levels
+### Galaxies A1 → C2
 
-Italian and Spanish each come as about 80 of the most-used words, in nine levels of growing complexity. Each level asks you to light most of its stars and make a number of sentences. When you do, the next level's words arrive as a meteor shower, along with a harder sentence pattern:
+Italian and Spanish each hold about 170 high-frequency words in 20 levels. The levels are grouped into six galaxies that follow the CEFR scale, and each galaxy is its own cluster in the sky. Finish a level and its next words arrive as a meteor shower. Finish a galaxy and the camera flies out to the next one.
 
-| Level | Adds | Pattern |
+| Galaxy | Levels | What it adds |
 |---|---|---|
-| 1 First Light | I, you, want, have, coffee, bread… | *Io voglio un caffè.* |
-| 2 Voices | he, she, we, you all, they | conjugation in all six persons |
-| 3 Moods | essere / estar + feelings | *Noi siamo felici.* |
-| 4 Daily Orbit | eat, drink, take, buy + times | *Loro bevono un caffè ogni giorno.* |
-| 5 Possibility | can, must / tener que, ir a + infinitive | *Tu devi prendere il treno domani.* |
-| 6 Coordinates | places | *Ellos van a comer una pizza en casa.* |
-| 7 Habits | always, often, sometimes | *Yo siempre tomo un café en el bar.* |
-| 8 Bridges | and, but, because, so | two clauses, each agreeing on its own |
-| 9 Wide Field | know how, prefer, find, wait for… | six moving parts in one sentence |
+| **A1 · Home Galaxy** | First Light, Voices, Moods, Daily Orbit, Possibility | I/you/we…, want/have, *essere/estar*, everyday verbs, can/must + infinitive |
+| **A2 · Neighbour Spiral** | Coordinates, Habits, Bridges, Wide Field, Yesterday, Tomorrow | places, how often, and/but/because, **past** and **future** tenses |
+| **B1 · Open Wheel** | Velvet Orbit, Old Light, Chain of Worlds | polite *vorrei/querría* (*avrei voluto* in the past), the **imperfect**, while/then/even though |
+| **B2 · Lantern Cluster** | Thought Nebula, Fine Structure | ideas, problems, decisions; finally/really/rarely |
+| **C1 · Deep Field** | Deep Field, Gravity of Reason | challenges and goals; however/therefore/and yet/given that |
+| **C2 · Far Horizon** | Strange Attractor, Far Horizon | idioms (*col senno di poi*, *a toro pasado*, *al settimo cielo*), *mettere in discussione*, eleven-slot sentences |
+
+### Sentences and stories, generated
+
+- **Surprise me** (Forge, `R`) builds a fresh sentence from any pattern you've reached, with every slot filled from your lit stars.
+- **Write a story** (Galaxy, `T`) builds a short paragraph: one subject, one timeline, joined by your bridge words.
+- **Drift** mixes generated sentences and stories with your saved ones, so it works from level 2 even if you haven't saved anything.
+
+Generated sentences only pair words that make sense together. Every noun has a kind (food, drink, reading, people, ideas, problems, goals…), and every verb lists the kinds it takes: you *mangi* food, *risolvi* problems, *cogli* opportunities, and *sapere* only takes skills (*so cucinare*). Spinning variables by hand stays free.
 
 ### Grammar that stays correct
 
 Swapping words only teaches if every sentence it produces is right, so the packs carry grammar:
 
 - Verbs carry their present-tense forms and agree with the nearest subject before them, so two-clause sentences conjugate each clause separately.
+- **Time words set the tense.** In the same pattern, *oggi io mangio* becomes *ieri io ho mangiato*, *a quei tempi io mangiavo* or *la settimana prossima io mangerò*. A clause with no time word continues the tense of the one before it, across sentences too, so a story stays in one timeline. Each verb's star card shows all four tenses.
+- Regular verbs are conjugated by rule (`js/packs/conjugate.js`) and irregular forms are written out. The generated present tense matches the earlier hand-checked tables exactly.
 - A verb after *volere/poder/tener que/ir a* is shown in the infinitive. Any verb chip can be switched between conjugated and infinitive.
 - Feelings are gender-neutral adjectives with singular and plural forms (*felice/felici*, *feliz/felices*).
 - Things are noun chunks with their article (*un caffè*, *il treno*, *la cena*).
@@ -73,7 +80,7 @@ There's also an English starter (80 words, revealed through their neighbours rat
 
 ### Keyboard
 
-`F` Forge · `G` Galaxy · `E` Eclipse · `D` Drift · `L` Logbook · `N` new word · `S` shuffle · `V` hear · `0` show everything · `Esc` close
+`F` Forge · `R` surprise sentence · `T` write a story · `G` Galaxy · `E` Eclipse · `D` Drift · `L` Logbook · `N` new word · `S` shuffle · `V` hear · `0` show everything · `Esc` close
 
 Drag to pan, scroll or pinch to zoom. Double-click a star to add it to your sentence; double-click empty space to dive in.
 
@@ -96,7 +103,9 @@ Your universe is saved in the browser's `localStorage`. Use **Settings → Expor
 | File | Role |
 |---|---|
 | `index.html`, `css/styles.css` | Shell and visual design |
-| `js/packs/it.js`, `js/packs/es.js` | Italian and Spanish: words by level with meanings, conjugations, plural forms, patterns, example sentences |
+| `js/packs/it.js`, `js/packs/es.js` | Italian and Spanish: 20 levels in six CEFR galaxies, with meanings, conjugations, tense-setting time words, patterns, verb–object meaning rules, example sentences |
+| `js/packs/conjugate.js` | Rule-based conjugation (present, past, imperfect, future) with irregular overrides |
+| `js/generate.js` | Sentence and story generators |
 | `js/packs/en.js`, `js/packs/index.js` | English starter pack and the loader that normalises packs |
 | `js/seed.js` | Sectors, the English starter words, constellation names |
 | `js/store.js` | Universe state, persistence, levels, word lookup (every form → its star), discovery graph, event bus |

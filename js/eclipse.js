@@ -2,7 +2,7 @@
 // Active recall built from your own constellations.
 
 import { state, derived, bumpSeen, bumpStat, commit } from './store.js';
-import { sentenceSegments, pickRandom, optionsFor, slotOf, surface, personAt } from './language.js';
+import { sentenceSegments, pickRandom, optionsFor, slotOf, surface, personAt, clauseTenses } from './language.js';
 import { app, h, fill, icon, openModal, closeModal, toast } from './ui.js';
 import { arpeggio, chime, errorSound, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
@@ -40,7 +40,8 @@ function round() {
   const answer = hiddenTok.wordId;
   const cat = state.categories[slotOf(hiddenTok, state.words)] || state.categories[state.words[answer].cat];
   const person = personAt(tokens, state.words, hiddenIdx);
-  const formOf = (id) => surface(state.words[id], { ...hiddenTok, wordId: id }, person);
+  const tense = clauseTenses(tokens, state.words)[hiddenIdx];
+  const formOf = (id) => surface(state.words[id], { ...hiddenTok, wordId: id }, person, tense);
   const others = shuffled(optionsFor(hiddenTok, state.words, derived.orbit).filter((id) => id !== answer)).slice(0, 3);
   const choices = shuffled([answer, ...others]);
   const segs = sentenceSegments(tokens, state.words, { end: c.end });
