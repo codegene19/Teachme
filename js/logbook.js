@@ -226,7 +226,7 @@ function progress() {
     h('h4', { class: 'log-sub' }, 'Weak spots'),
     spots.length
       ? h('ul', { class: 'weak-list' }, spots.map(({ slip, n }) => h('li', {},
-        h('span', { class: `weak-kind ${slip.kind}` }, { person: 'Person', tense: 'Tense', word: 'Word' }[slip.kind]),
+        h('span', { class: `weak-kind ${slip.kind}` }, { person: 'Person', tense: 'Tense', word: 'Word', order: 'Order' }[slip.kind]),
         h('div', { class: 'weak-main' },
           h('b', {}, slipText(slip)),
           h('small', {}, `${n} slip${n === 1 ? '' : 's'}${slip.kind === 'word' && state.words[slip.id] ? ` · ${dueLabel(state.words[slip.id])}` : ''}`)),

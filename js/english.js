@@ -101,6 +101,11 @@ export function englishFor(tokens, words, end = '.') {
       if (next?.kind === 'errand') g = 'do';
       else if (next?.kind === 'trip' || /photo/.test(next?.gloss || '')) g = 'take';
     }
+    // you miss a train, you don't lose it
+    if (g === 'lose') {
+      const next = tokens.slice(i + 1).map((x) => words[x.wordId]).find((x) => x?.cat === 'thing');
+      if (next?.kind === 'transport' || /train|bus|flight|plane/.test(next?.gloss || '')) g = 'miss';
+    }
     // you look at a photo, you don't watch it
     if (g === 'watch') {
       const next = tokens.slice(i + 1).map((x) => words[x.wordId]).find((x) => x?.cat === 'thing');
