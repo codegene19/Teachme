@@ -237,7 +237,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({'disk': True, 'file': str(UNIVERSE.relative_to(ROOT)), 'piper': write_manifest()})
         if path == '/api/universe':
             if not UNIVERSE.exists():
-                return self._json({'error': 'no saved universe yet'}, HTTPStatus.NOT_FOUND)
+                return self._json(None)  # nothing saved yet (not an error)
             body = UNIVERSE.read_bytes()
             self.send_response(HTTPStatus.OK)
             self.send_header('Content-Type', 'application/json')
