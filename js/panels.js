@@ -9,6 +9,7 @@ import { GALAXIES } from './seed.js';
 import { app, h, fill, $, icon, openModal, closeModal, toast } from './ui.js';
 import { PIPER_VOICES, piperStatus, preparePiper, onPiperStatus, storedVoices, removePiperVoice, piperLocal } from './piper.js';
 import { diskInfo } from './disk.js';
+import { installed, canInstall, promptInstall, isOfflineReady, isIOS, onPwaChange } from './pwa.js';
 import { dueLabel, brightness } from './memory.js';
 import { speak, getVoices, speechSupported, setSoundEnabled, voiceFor, voiceStatus, onVoicesChanged } from './sfx.js';
 
@@ -432,6 +433,26 @@ function toggle(label, desc, value, onChange) {
   return h('label', { class: 'toggle' }, input, h('span', { class: 'switch' }), h('span', { class: 'toggle-text' }, h('b', {}, label), desc && h('small', {}, desc)));
 }
 
+/** Install as an app + offline status. Updates itself when the browser's install prompt arrives. */
+function appSection() {
+  const body = h('div', { class: 'stack tight' });
+  const draw = () => {
+    const offline = isOfflineReady()
+      ? h('p', { class: 'voice-status ok' }, '✓ Works offline: the app is stored on this device, so it opens without internet. (Piper voices work offline once downloaded.)')
+      : h('p', { class: 'lede' }, 'Offline use needs the app served from run.py or a web server (https or localhost).');
+    let install;
+    if (installed()) install = h('p', { class: 'voice-status ok' }, '✓ Running as an installed app.');
+    else if (canInstall()) {
+      install = h('button', { class: 'btn primary', onclick: async () => { if (await promptInstall()) toast({ kind: 'info', title: 'Lexicosmos installed', body: 'Open it from your home screen or app list.' }); } }, icon('download', 16), 'Install Lexicosmos');
+    } else if (isIOS()) install = h('p', { class: 'lede' }, 'On iPhone or iPad: tap Share, then “Add to Home Screen”.');
+    else install = h('p', { class: 'lede' }, 'To install: use your browser’s menu → “Install app” / “Add to Home screen” (Chrome, Edge, Android). In Safari on a Mac: File → Add to Dock.');
+    fill(body, h('p', { class: 'lede' }, 'Install Lexicosmos to open it like an app — full screen, from your home screen or dock.'), install, offline);
+  };
+  draw();
+  const off = onPwaChange(() => { if (!body.isConnected) { off(); return; } draw(); });
+  return h('section', { class: 'set-group', id: 'set-app' }, h('h3', {}, 'App'), body);
+}
+
 export function settings(section) {
   const rateOut = h('output', {}, `${state.settings.rate.toFixed(2)}×`);
   const rate = h('input', { type: 'range', min: '0.5', max: '1.3', step: '0.05', value: String(state.settings.rate), oninput: (e) => { setSetting('rate', Number(e.target.value)); rateOut.textContent = `${Number(e.target.value).toFixed(2)}×`; } });
@@ -494,6 +515,7 @@ export function settings(section) {
             h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Speed ', rateOut), rate),
             h('button', { class: 'btn small', onclick: () => speak(pack()?.hello || 'Lexicosmos', speechOpts()) }, icon('speak', 16), 'Test voice')]
           : h('p', { class: 'lede' }, 'Speech is not available in this browser.')),
+      appSection(),
       h('section', { class: 'set-group' },
         h('h3', {}, 'Universe'),
         diskInfo()

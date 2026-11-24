@@ -16,6 +16,7 @@ import { initLog } from './logbook.js';
 import { initDrift } from './drift.js';
 import { initEclipse } from './eclipse.js';
 import { initPractice } from './practice.js';
+import { initPwa } from './pwa.js';
 import { dueIds } from './memory.js';
 import { checkMissions, pendingMissions, doneCount, MISSIONS } from './missions.js';
 import { runGenesis } from './genesis.js';
@@ -51,6 +52,7 @@ initLog();
 initDrift();
 initEclipse();
 initPractice();
+initPwa();
 
 function igniteFromMap(id) {
   unlockAudio();

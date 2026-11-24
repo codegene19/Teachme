@@ -11,6 +11,7 @@ import { sentenceSegments, sentenceText, surface, optionsFor, pickRandom } from 
 import { randomSentence, canGenerate } from './generate.js';
 import { englishFor, cleanGloss } from './english.js';
 import { grade, dueIds, dueLabel } from './memory.js';
+import { recordAnswer, recordSlip, slipMatches, slipText } from './progress.js';
 import { app, h, fill, icon, openModal, closeModal } from './ui.js';
 import { speak, unlockAudio, arpeggio, errorSound } from './sfx.js';
 import { speechOpts } from './panels.js';
@@ -46,7 +47,11 @@ function distractors(s, target) {
     for (let p = 0; p < 6; p++) if (p !== c.person) choices.push({ person: p, tense: c.tense });
     for (const t of ['pres', 'past', 'imp', 'fut']) if (t !== c.tense && (t === 'pres' || w.tenses?.[t])) choices.push({ person: c.person, tense: t }, { person: c.person, tense: t });
     const o = pickRandom(choices);
-    add({ text: surface(w, s.tokens[c.index], o.person, o.tense), wordId: w.id, person: o.person, tense: o.tense });
+    const tok = s.tokens[c.index];
+    const text = surface(w, tok, o.person, o.tense);
+    // name the form by what it really is (some verbs use the imperfect for the past)
+    const tense = ['pres', 'imp', 'past', 'fut'].find((t) => surface(w, tok, o.person, t) === text) || o.tense;
+    add({ text, wordId: w.id, person: o.person, tense });
   }
   const other = shuffle(target.filter((c) => ['thing', 'feeling', 'place', 'time'].includes(words[c.wordId].cat)))[0];
   if (other) {
@@ -57,15 +62,18 @@ function distractors(s, target) {
   return out.slice(0, 3);
 }
 
+/** focus: a word id (review), or a weak spot to train ({ kind: 'person' | 'tense' | 'word', … }). */
 function makeChallenge(focus = null) {
-  for (let k = 0; k < 120; k++) {
-    const s = randomSentence({ statementsOnly: k % 4 !== 0 });
+  const slip = focus && typeof focus === 'object' ? focus : null;
+  for (let k = 0; k < 160; k++) {
+    const s = randomSentence({ statementsOnly: k % 4 !== 0, tense: slip?.kind === 'tense' && k < 120 ? slip.to : null });
     if (!s) return null;
-    if (focus && !s.tokens.some((t) => t.wordId === focus)) continue;
+    if (focus && !slip && !s.tokens.some((t) => t.wordId === focus)) continue;
     const target = tilesFor(s);
     if (target.length < 2 || target.length > 12) continue;
+    if (slip && k < 150 && !slipMatches(slip, target, W())) continue;
     const bank = shuffle([...target, ...distractors(s, target)]).map((c, key) => ({ ...c, key }));
-    return { kind: 'translate', s, target, bank, focus, english: englishFor(s.tokens, W(), s.end) };
+    return { kind: 'translate', s, target, bank, focus: slip ? null : focus, english: englishFor(s.tokens, W(), s.end) };
   }
   return null;
 }
@@ -82,12 +90,18 @@ function makeWordCard(focus) {
 // ----------------------------------------------------------- session
 let session = null;
 
-/** mode: 'review' (due words first) or 'translate' (endless). */
-export function open(mode) {
+/**
+ * mode: 'review' (due words first), 'translate' (English → sentence),
+ * 'listen' (hear it, build it), or 'focus' (translate, aimed at one weak spot).
+ */
+export function open(mode, opts = {}) {
   unlockAudio();
   const due = dueIds();
   mode = mode || (due.length ? 'review' : 'translate');
-  session = { mode, queue: mode === 'review' ? due.slice(0, 10) : [], k: 0, right: 0, total: 0, brightened: new Set(), dimmed: new Set() };
+  session = {
+    mode, queue: mode === 'review' ? due.slice(0, 10) : [], k: 0, right: 0, total: 0,
+    brightened: new Set(), dimmed: new Set(), slip: mode === 'focus' ? opts.slip : null,
+  };
   next();
 }
 
@@ -97,7 +111,7 @@ function next() {
     const focus = session.queue[session.k];
     session.item = makeChallenge(focus) || makeWordCard(focus);
   } else {
-    session.item = makeChallenge();
+    session.item = makeChallenge(session.slip);
   }
   session.answer = [];
   session.checked = false;
@@ -108,7 +122,8 @@ function tabs() {
   const due = dueIds().length;
   return h('div', { class: 'practice-tabs', role: 'tablist' },
     h('button', { class: `tense-tab${session.mode === 'review' ? ' active' : ''}`, role: 'tab', onclick: () => open('review') }, `Review · ${due} due`),
-    h('button', { class: `tense-tab${session.mode === 'translate' ? ' active' : ''}`, role: 'tab', onclick: () => open('translate') }, 'Translate'));
+    h('button', { class: `tense-tab${session.mode === 'translate' || session.mode === 'focus' ? ' active' : ''}`, role: 'tab', onclick: () => open('translate') }, 'Translate'),
+    h('button', { class: `tense-tab${session.mode === 'listen' ? ' active' : ''}`, role: 'tab', onclick: () => open('listen') }, 'Listen'));
 }
 
 function progress() {
@@ -116,7 +131,9 @@ function progress() {
     const n = session.queue.length;
     return h('div', { class: 'practice-progress' }, h('span', {}, `${Math.min(session.k + 1, n)} / ${n}`), h('span', { class: 'bar' }, h('i', { style: { width: `${(session.k / n) * 100}%` } })));
   }
-  return h('div', { class: 'practice-progress' }, h('span', {}, session.total ? `${session.right} of ${session.total} right` : 'Build the sentence'));
+  const score = session.total ? `${session.right} of ${session.total} right` : '';
+  if (session.slip) return h('div', { class: 'practice-progress' }, h('span', {}, `Weak spot: ${slipText(session.slip)}${score ? ` · ${score}` : ''}`));
+  return h('div', { class: 'practice-progress' }, h('span', {}, score || (session.mode === 'listen' ? 'Listen, then build what you hear' : 'Build the sentence')));
 }
 
 function render() {
@@ -145,15 +162,26 @@ function render() {
     }, c.text)));
   };
   drawTiles();
-  const checkBtn = h('button', { class: 'btn primary', onclick: () => check(status, checkBtn, nextBtn, drawTiles) }, 'Check');
+  const listen = session.mode === 'listen';
+  const english = h('p', { class: 'prompt-en' }, it.english);
+  const checkBtn = h('button', { class: 'btn primary', onclick: () => { check(status, checkBtn, nextBtn, drawTiles); if (listen) prompt.append(h('p', { class: 'prompt-hint' }, it.english)); } }, 'Check');
   const nextBtn = h('button', { class: 'btn primary', hidden: true, onclick: () => { session.k += 1; next(); } }, 'Next', icon('arrow', 16));
+  const text = sentenceText(it.s.tokens, W(), it.s.end);
+  const play = (rate) => speak(text, { ...speechOpts(), ...(rate ? { rate } : {}) });
+  const prompt = listen
+    ? h('div', { class: 'prompt listen' },
+      h('span', { class: 'field-label' }, `Listen, then build what you hear in ${pack()?.name || 'the language'}`),
+      h('div', { class: 'listen-row' },
+        h('button', { class: 'play-btn', 'aria-label': 'Play the sentence', onclick: () => play() }, icon('speak', 26)),
+        h('button', { class: 'btn small ghost', onclick: () => play(0.6) }, 'Slower')))
+    : h('div', { class: 'prompt' }, h('span', { class: 'field-label' }, `Say it in ${pack()?.name || 'the language'}`), english);
   openModal({
-    kicker: session.mode === 'review' ? 'Practice · Review' : 'Practice · Translate',
+    kicker: { review: 'Practice · Review', listen: 'Practice · Listen', focus: 'Practice · Weak spot' }[session.mode] || 'Practice · Translate',
     title: '',
     size: 'wide practice',
     body: h('div', { class: 'stack' },
       tabs(), progress(),
-      h('div', { class: 'prompt' }, h('span', { class: 'field-label' }, `Say it in ${pack()?.name || 'the language'}`), h('p', { class: 'prompt-en' }, it.english)),
+      prompt,
       answerRow, bankRow, status),
     footer: [
       h('button', { class: 'btn ghost', onclick: () => { session.k += 1; next(); } }, 'Skip'),
@@ -161,6 +189,7 @@ function render() {
       checkBtn, nextBtn,
     ],
   });
+  if (listen) setTimeout(() => play(), 250);
 }
 
 function check(status, checkBtn, nextBtn, drawTiles) {
@@ -187,6 +216,8 @@ function check(status, checkBtn, nextBtn, drawTiles) {
       if (!a) continue;
       missing.splice(missing.indexOf(t), 1);
       wrongIds.add(t.wordId);
+      if (a.person !== t.person) recordSlip({ kind: 'person', from: a.person, to: t.person });
+      else if (a.tense !== t.tense) recordSlip({ kind: 'tense', from: a.tense, to: t.tense });
       if (a.person !== t.person) reasons.push(`“${a.text}” goes with “${personName(a.person)}” — here the subject is “${personName(t.person)}”: “${t.text}”.`);
       else if (a.tense !== t.tense) reasons.push(`“${a.text}” is the ${tenseName(a.tense)}; this sentence is in the ${tenseName(t.tense)}: “${t.text}”.`);
       else reasons.push(`Use “${t.text}” here, not “${a.text}”.`);
@@ -197,6 +228,7 @@ function check(status, checkBtn, nextBtn, drawTiles) {
       else reasons.push(`“${a.text}” is extra.`);
     }
     for (const t of missing) { wrongIds.add(t.wordId); reasons.push(`Missing: “${t.text}”.`); }
+    for (const id of wrongIds) recordSlip({ kind: 'word', id });
     if (!reasons.length) reasons.push('Right words — check the order.');
     else if (reasons.length > 3) reasons.splice(3);
   }
@@ -208,6 +240,8 @@ function check(status, checkBtn, nextBtn, drawTiles) {
   }
   if (it.focus && !ok && !wrongIds.has(it.focus)) grade(it.focus, true);
   if (ok) session.right += 1;
+  recordAnswer(ok, session.mode);
+  if (ok && session.slip) recordSlip(session.slip, -1);
   bumpStat('made');
   bumpStat('practised');
   bumpSeen(ids);
@@ -238,6 +272,8 @@ function renderWordCard(it) {
       answered = true;
       const ok = id === it.focus;
       grade(it.focus, ok);
+      recordAnswer(ok, 'review');
+      if (!ok) recordSlip({ kind: 'word', id: it.focus });
       (ok ? session.brightened : session.dimmed).add(it.focus);
       session.total += 1;
       if (ok) session.right += 1;

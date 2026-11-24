@@ -36,8 +36,10 @@ The verb follows the subject: switch *io* to *noi* and *voglio* becomes *vogliam
 5. **Galaxy**: chain constellations into paragraphs and spin the links between them.
 6. **Eclipse**: one word of a sentence goes dark. You hear the sentence, then pick the missing word — active recall using your own patterns.
 7. **Practice** (`P`): an English sentence appears; build it from word tiles. The bank hides tempting wrong forms — the same verb in another person or tense, a neighbouring noun — and the feedback names the exact slip (“*ordinava* is the imperfetto; this sentence is in the futuro: *ordinerà*”).
+   The **Listen** tab is dictation: the sentence is spoken (▶ to replay, *Slower* at 60% speed) with no English shown; build what you hear. The English appears after you check.
 8. **Review**: every lit star has a memory schedule. It comes due a day after you light it; each right answer pushes the next review further out (×2, then ×2.5, up to six months), and a miss brings it back within hours. **Stars that are due dim on the map**, the Practice button shows how many are waiting, and the star card says when each word is next due. Review builds its sentences around the dimmest words. Eclipse answers count too.
-9. **Drift**: autopilot. The camera flies star to star through freshly generated sentences while they're read aloud.
+9. **Progress** (Logbook → Progress): stars lit over the last 30 days, right vs missed answers over the last 14, your 7-day accuracy, practice streak and how many stars are due. **Weak spots** lists the slips you make most — a person (“*voi* form where *loro* is needed”), a tense (“*passato prossimo* instead of *presente*”) or a word — each with a **Practise** button that runs translations aimed at exactly that. Getting it right there wears the weak spot down.
+10. **Drift**: autopilot. The camera flies star to star through freshly generated sentences while they're read aloud.
 
 Hidden constellations (*First Light, Curiosity, Binary Star…*) appear in the sky once you've lit every star they need. Seventeen missions guide you from one word to a million sentences within reach.
 
@@ -100,6 +102,10 @@ Drag to pan, scroll or pinch to zoom. Double-click a star to add it to your sent
 
 Piper needs internet access to `huggingface.co` (the voice files), `cdn.jsdelivr.net` and `cdnjs.cloudflare.com` (its runtime). The Claude artifact preview blocks these, so Piper only works where the app is hosted normally, for example GitHub Pages or `python3 -m http.server`. The browser library is vendored in `js/vendor/piper-tts-web/` (MIT).
 
+### Install it as an app, use it offline
+
+When the app is served by `run.py` (or any web server on https/localhost), it can be installed: Chrome/Edge show *Install app* in the address bar or menu, Android *Add to Home screen*, iPhone/iPad *Share → Add to Home Screen*. Settings → App has an install button when the browser offers one. A service worker stores the app on the device, so it opens and works without internet; your universe is already saved in the browser. Piper voices keep working offline once downloaded.
+
 ## Running it
 
 The easiest way is the run script. It needs only Python 3.8+ (no packages to install):
@@ -139,6 +145,8 @@ Without the script, any static server works (`python3 -m http.server 8000`) or G
 | `js/galaxy.js` | Paragraph builder |
 | `js/eclipse.js` | Listening quiz |
 | `js/practice.js` | Translation challenges and review sessions |
+| `js/progress.js`, `js/charts.js` | Answer history, weak spots, and the Progress charts |
+| `js/pwa.js`, `sw.js`, `manifest.json`, `icons/` | Installable app and offline cache |
 | `js/memory.js` | Spaced-review schedule, star dimming |
 | `js/english.js` | English renderings of generated sentences (person, tense, negation, modals, adverb order) |
 | `js/drift.js` | Autopilot |

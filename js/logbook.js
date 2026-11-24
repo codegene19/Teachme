@@ -8,11 +8,14 @@ import { sentenceText, paragraphText, countTokens, countParagraph, formatBig } f
 import { app, h, fill, $, icon } from './ui.js';
 import { MISSIONS, doneCount } from './missions.js';
 import { mastery } from './panels.js';
+import { litSeries, answerSeries, accuracy, practiceStreak, weakSpots, slipText } from './progress.js';
+import { dueIds, dueLabel } from './memory.js';
+import { lineChart, answerBars } from './charts.js';
 
 const root = $('#log');
 let tab = 'stars';
 let bodyEl, tabsEl;
-const TABS = [['stars', 'Stars'], ['constellations', 'Constellations'], ['galaxies', 'Galaxies'], ['missions', 'Journey']];
+const TABS = [['stars', 'Stars'], ['constellations', 'Constellations'], ['galaxies', 'Galaxies'], ['missions', 'Journey'], ['progress', 'Progress']];
 
 export function initLog() {
   tabsEl = h('div', { class: 'tabs', role: 'tablist' });
@@ -47,13 +50,14 @@ function render() {
     stars: derived.litCount, constellations: Object.keys(state.constellations).length,
     galaxies: Object.keys(state.galaxies).length,
     missions: levelProgress() ? `lv ${levelProgress().level}` : `${doneCount()}/${MISSIONS.length}`,
+    progress: (() => { const a = accuracy(7); return a ? `${a.pct}%` : ''; })(),
   };
   fill(tabsEl, ...TABS.map(([id, label]) => h('button', {
     class: 'tab' + (tab === id ? ' active' : ''), role: 'tab', 'aria-selected': String(tab === id),
     onclick: () => { tab = id; render(); },
   }, label, h('small', {}, String(counts[id])))));
   const scroll = bodyEl.scrollTop;
-  fill(bodyEl, ...({ stars, constellations, galaxies, missions }[tab])());
+  fill(bodyEl, ...({ stars, constellations, galaxies, missions, progress }[tab])());
   bodyEl.scrollTop = scroll;
 }
 
@@ -200,4 +204,33 @@ function confirmDelete(fn) {
     },
   }, icon('trash', 16));
   return b;
+}
+
+// ------------------------------------------------------------ progress
+function progress() {
+  const acc = accuracy(7);
+  const streak = practiceStreak();
+  const due = dueIds().length;
+  const spots = weakSpots(6);
+  const canPractise = app.practice?.available();
+  const tile = (n, label, sub) => h('div', { class: 'stat-tile' }, h('b', {}, n), h('span', {}, label), sub ? h('small', {}, sub) : null);
+  return [
+    h('div', { class: 'stat-tiles' },
+      tile(String(derived.litCount), 'stars lit'),
+      tile(acc ? `${acc.pct}%` : '—', 'right, 7 days', acc ? `${acc.total} answers` : 'no practice yet'),
+      tile(String(streak), streak === 1 ? 'day in a row' : 'days in a row'),
+      tile(String(due), 'due for review')),
+    due && canPractise ? h('button', { class: 'btn small', onclick: () => app.practice.open('review') }, `Review ${due} fading star${due === 1 ? '' : 's'}`) : null,
+    lineChart({ title: 'Stars lit · last 30 days', data: litSeries(30), unit: 'stars' }),
+    answerBars({ title: 'Practice answers · last 14 days', data: answerSeries(14) }),
+    h('h4', { class: 'log-sub' }, 'Weak spots'),
+    spots.length
+      ? h('ul', { class: 'weak-list' }, spots.map(({ slip, n }) => h('li', {},
+        h('span', { class: `weak-kind ${slip.kind}` }, { person: 'Person', tense: 'Tense', word: 'Word' }[slip.kind]),
+        h('div', { class: 'weak-main' },
+          h('b', {}, slipText(slip)),
+          h('small', {}, `${n} slip${n === 1 ? '' : 's'}${slip.kind === 'word' && state.words[slip.id] ? ` · ${dueLabel(state.words[slip.id])}` : ''}`)),
+        canPractise ? h('button', { class: 'btn small ghost', onclick: () => app.practice.open('focus', { slip }) }, 'Practise') : null)))
+      : h('p', { class: 'lede dim' }, 'Mistakes in Practice and Eclipse show up here — which person, tense or word trips you up — with a button to train just that.'),
+  ];
 }

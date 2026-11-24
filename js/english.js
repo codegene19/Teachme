@@ -101,6 +101,11 @@ export function englishFor(tokens, words, end = '.') {
       if (next?.kind === 'errand') g = 'do';
       else if (next?.kind === 'trip' || /photo/.test(next?.gloss || '')) g = 'take';
     }
+    // you look at a photo, you don't watch it
+    if (g === 'watch') {
+      const next = tokens.slice(i + 1).map((x) => words[x.wordId]).find((x) => x?.cat === 'thing');
+      if (/photo|picture|map/.test(next?.gloss || '')) g = 'look at';
+    }
     if (w.cat === 'link') {
       out.push(`${w.comma || w.joinComma ? ',' : ''}\u0000${g}`);
       neg = false; lastModal = null; verbAt = -1; verbIsBe = false; queued = [];
