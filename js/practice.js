@@ -11,6 +11,7 @@ import { sentenceSegments, sentenceText, surface, optionsFor, pickRandom } from 
 import { randomSentence, canGenerate } from './generate.js';
 import { englishFor, cleanGloss } from './english.js';
 import { grade, dueIds, dueLabel } from './memory.js';
+import { orderRule, keptInOrder, checkOrder } from './order.js';
 import { recordAnswer, recordSlip, slipMatches, slipText } from './progress.js';
 import { app, h, fill, icon, openModal, closeModal } from './ui.js';
 import { speak, unlockAudio, arpeggio, errorSound } from './sfx.js';
@@ -225,7 +226,11 @@ function check(status, checkBtn, nextBtn, drawTiles) {
   const ans = session.answer;
   const same = (a, b) => a.length === b.length && a.every((c, i) => norm(c.text) === norm(b[i].text));
   const exactOrder = same(ans, it.target);
-  const alt = !exactOrder && altOrders(it.target).find((v) => same(ans, v));
+  const sorted0 = (a) => a.map((c) => norm(c.text)).sort().join('|');
+  const sameWords = ans.length === it.target.length && sorted0(ans) === sorted0(it.target);
+  // any order the grammar accepts is right too ("io spesso mangio", a time word up front)
+  const freeOk = !exactOrder && sameWords && !checkOrder(ans.map((c) => ({ wordId: c.wordId, inf: !!it.s.tokens[c.index]?.inf })), W());
+  const alt = !exactOrder && (altOrders(it.target).find((v) => same(ans, v)) || (freeOk && ans));
   const ok = exactOrder || !!alt;
   // only the right words, in the wrong order: show what moved and why, and let them fix it
   const sorted = (a) => a.map((c) => norm(c.text)).sort().join('|');
@@ -376,49 +381,21 @@ function altOrders(tgt) {
 /** Which tiles are out of place (outside the longest run kept in order), and the rule for each. */
 function orderFix(ans, tgt, s) {
   const norm = (x) => x.toLowerCase();
-  const n = ans.length, m = tgt.length;
-  const L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
-    L[i][j] = norm(ans[i].text) === norm(tgt[j].text) ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-  }
-  const kept = new Set();
-  for (let i = 0, j = 0; i < n && j < m;) {
-    if (norm(ans[i].text) === norm(tgt[j].text)) { kept.add(ans[i].key); i++; j++; }
-    else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++;
-  }
+  const keptIdx = keptInOrder(ans, tgt, (c) => norm(c.text));
+  const kept = new Set([...keptIdx].map((i) => ans[i].key));
   const misplaced = new Set(ans.filter((c) => !kept.has(c.key)).map((c) => c.key));
   const moved = ans.filter((c) => misplaced.has(c.key));
   const reasons = [];
   const cats = new Set();
   for (const c of moved) {
     const j = tgt.findIndex((t) => norm(t.text) === norm(c.text));
-    const r = orderRule(tgt, j, s);
+    const r = orderRule(tgt.map((t) => ({ ...t, inf: !!s.tokens[t.index]?.inf })), j, W());
     cats.add(r.cat);
     if (!reasons.includes(r.text)) reasons.push(r.text);
   }
   return { misplaced, reasons: reasons.slice(0, 3), cats: [...cats] };
 }
 
-/** Why a word sits where it does, shown with its real neighbours. */
-function orderRule(tgt, j, s) {
-  const words = W();
-  const c = tgt[j], prev = tgt[j - 1], next = tgt[j + 1];
-  const w = words[c.wordId];
-  const isVerb = (t) => t && words[t.wordId]?.forms && !s.tokens[t.index]?.inf;
-  const q = (...xs) => `“${xs.filter(Boolean).map((x) => x.text).join(' ')}”`;
-  const neg = w.cat === 'core' && /^(non|no|not)$/i.test(w.text);
-  if (neg) return { cat: 'neg', text: `“${c.text}” goes right before the verb: ${q(c, next)}.` };
-  if (w.cat === 'freq') return { cat: 'freq', text: isVerb(prev) || words[prev?.wordId]?.forms ? `How-often words go right after the verb: ${q(prev, c)}.` : `“${c.text}” goes here: ${q(prev, c, next)}.` };
-  if (w.cat === 'time') return { cat: 'time', text: `Time words like “${c.text}” go at the start or the end of the sentence, not in the middle.` };
-  if (w.cat === 'who') return { cat: 'who', text: next ? `The subject comes before its verb: ${q(c, next)}.` : `“${c.text}” goes here: ${q(prev, c)}.` };
-  if (w.cat === 'link') return { cat: 'link', text: `“${c.text}” joins two sentences — it opens the second one: ${q(c, next, tgt[j + 2])}…` };
-  if (w.forms && s.tokens[c.index]?.inf) return { cat: 'inf', text: `After “${prev?.text}” comes the infinitive: ${q(prev, c)}.` };
-  if (w.forms) return { cat: 'verb', text: prev && words[prev.wordId]?.cat === 'who' ? `The verb follows its subject: ${q(prev, c)}.` : `The verb goes here: ${q(prev, c, next)}.` };
-  if (w.cat === 'thing') return { cat: 'thing', text: `“${c.text}” is what the action is done to — it comes after the verb: ${q(prev, c)}.` };
-  if (w.cat === 'place') return { cat: 'place', text: `Places come after the action and its object: ${q(prev, c)}.` };
-  if (w.cat === 'feeling') return { cat: 'feeling', text: `Descriptions come after the verb: ${q(prev, c)}.` };
-  return { cat: w.cat, text: j === 0 ? `“${c.text}” starts the sentence.` : `“${c.text}” comes after “${prev.text}”.` };
-}
 
 function renderWordCard(it) {
   const w = W()[it.focus];

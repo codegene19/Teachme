@@ -13,9 +13,12 @@ import { randomSentence, canGenerate } from './generate.js';
 import { app, h, fill, $, icon, toast, showPopover, hidePopover, isPopoverOpen } from './ui.js';
 import { chime, arpeggio, speak, unlockAudio, errorSound } from './sfx.js';
 import { speechOpts } from './panels.js';
+import { checkOrder, orderRule } from './order.js';
+import { recordSlip } from './progress.js';
 
 const root = $('#forge');
-let chipsEl, sentenceEl, mathEl, countEl, countLabel, nameInput, textInput, endEls, saveBtn, editTag, hintEl;
+let chipsEl, sentenceEl, mathEl, countEl, countLabel, nameInput, textInput, endEls, saveBtn, editTag, hintEl, orderEl;
+const keptOrders = new Set(); // sentences whose order you chose to keep
 let popIndex = -1;
 let wheelAcc = 0;
 let prevSurface = [];
@@ -48,6 +51,7 @@ export function initForge() {
   sentenceEl = h('p', { class: 'sentence', 'aria-live': 'polite' });
   mathEl = h('div', { class: 'math' });
   hintEl = h('div', { class: 'forge-hint' });
+  orderEl = h('div', { class: 'order-check', hidden: true, 'aria-live': 'polite' });
   textInput = h('input', {
     class: 'text-input', placeholder: 'Type words or a whole sentence…', 'aria-label': 'Add words', autocomplete: 'off', spellcheck: 'false',
     onkeydown: (e) => {
@@ -65,6 +69,7 @@ export function initForge() {
     chipsEl,
     sentenceEl,
     mathEl,
+    orderEl,
     hintEl,
     h('form', { class: 'forge-input', onsubmit: (e) => { e.preventDefault(); submitText(textInput.value); textInput.value = ''; } },
       textInput, h('button', { class: 'btn', type: 'submit' }, icon('plus', 16), 'Add')),
@@ -149,8 +154,50 @@ function render() {
   } else {
     fill(mathEl, f.tokens.length ? h('span', { class: 'dim' }, 'One fixed sentence. Tap a word and make it a variable to multiply it.') : '');
   }
+  renderOrder();
   renderHint();
   app.space.setPath(f.tokens.map((t) => t.wordId));
+}
+
+// ------------------------------------------------------------ word order
+const orderKey = (toks) => toks.map((t) => `${t.wordId}${t.inf ? ':i' : ''}`).join(' ');
+
+/** Spot words out of order, mark their chips, explain, and offer the fix. */
+function renderOrder() {
+  const f = F();
+  const words = state.words;
+  const fix = f.tokens.length >= 3 ? checkOrder(f.tokens, words) : null;
+  if (!fix || keptOrders.has(orderKey(f.tokens))) { orderEl.hidden = true; fill(orderEl); return; }
+  fix.moved.forEach((i) => chipEl(i)?.classList.add('misplaced'));
+  const better = fix.order.map((i) => f.tokens[i]);
+  const segs = sentenceSegments(better, words, { end: f.end }).filter((x) => x.kind === 'word');
+  const seq = better.map((t, j) => ({ text: segs.find((x) => x.index === j)?.text || words[t.wordId]?.text, wordId: t.wordId, inf: !!t.inf }));
+  const plain = sentenceSegments(better, words, { capitalize: false, end: f.end }).filter((x) => x.kind === 'word');
+  const seqPlain = seq.map((x, j) => ({ ...x, text: plain.find((p) => p.index === j)?.text || x.text }));
+  const reasons = [];
+  const cats = new Set();
+  for (const i of fix.moved) {
+    const r = orderRule(seqPlain, fix.order.indexOf(i), words);
+    cats.add(r.cat);
+    if (!reasons.includes(r.text)) reasons.push(r.text);
+  }
+  const preview = sentenceText(better, words, f.end);
+  fill(orderEl,
+    h('div', { class: 'order-head' }, h('span', { class: 'kicker' }, '↹ Word order'), h('span', { class: 'order-sub' }, 'Orange words are out of place')),
+    h('ul', { class: 'reasons' }, reasons.slice(0, 3).map((r) => h('li', {}, r))),
+    h('p', { class: 'order-preview' }, h('span', { class: 'field-label' }, 'Better: '), preview),
+    h('div', { class: 'row wrap' },
+      h('button', { class: 'btn small primary', onclick: () => {
+        for (const cat of cats) recordSlip({ kind: 'order', cat });
+        f.tokens = better;
+        bumpStat('orderFixes');
+        commit();
+        arpeggio(better.map((t) => words[t.wordId]?.cat), 0.05);
+        better.forEach((_, i) => chipEl(i)?.classList.add('reflow'));
+      } }, 'Fix the order'),
+      h('button', { class: 'btn small ghost', onclick: () => speak(preview, speechOpts()) }, icon('speak', 14), 'Hear it'),
+      h('button', { class: 'btn small ghost', onclick: () => { keptOrders.add(orderKey(f.tokens)); renderOrder(); } }, 'Keep mine')));
+  orderEl.hidden = false;
 }
 
 function renderHint() {
