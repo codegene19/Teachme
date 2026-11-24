@@ -587,3 +587,27 @@ export function deleteGalaxy(id) {
 }
 
 export { cloneTokens, emptyForge, emptyGalaxy };
+
+/**
+ * A story character ("Marco", "Lucía"): a star in the WHO sector that
+ * conjugates like he/she, so the generators can make it the subject.
+ */
+export function addCharacter(name) {
+  const clean = cleanWordText(name).slice(0, 24);
+  if (!clean) return null;
+  const existing = findWord(clean);
+  if (existing) return existing.cat === 'who' ? existing : null;
+  const text = cap(clean);
+  const w = {
+    id: uid('ch:'), text, cat: 'who', person: 2, gloss: '', lit: true, litAt: Date.now(),
+    seen: 0, note: '', seed: false, character: true, lvl: 0, gal: 0, order: state.nextOrder++,
+  };
+  state.words[w.id] = w;
+  placeWord(state, w);
+  discover('who');
+  commit();
+  emit('ignite', { id: w.id, newSector: false, quiet: true, created: true });
+  return w;
+}
+
+export const characters = () => derived.list.filter((w) => w.character);

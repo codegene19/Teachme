@@ -2,7 +2,7 @@
 
 import {
   importUniverse, exportUniverse,
-  load, state, derived, on, persist, saveNow, ignite, resolveBlueprint, markHint,
+  load, commit, state, derived, on, persist, saveNow, ignite, resolveBlueprint, markHint,
   pack, hasLevels, blueprints, levelProgress, levelUp,
 } from './store.js';
 import { sentenceText, formatBig } from './language.js';
@@ -15,6 +15,8 @@ import { initGalaxy } from './galaxy.js';
 import { initLog } from './logbook.js';
 import { initDrift } from './drift.js';
 import { initEclipse } from './eclipse.js';
+import { initPractice } from './practice.js';
+import { dueIds } from './memory.js';
 import { checkMissions, pendingMissions, doneCount, MISSIONS } from './missions.js';
 import { runGenesis } from './genesis.js';
 import { canGenerate } from './generate.js';
@@ -48,6 +50,7 @@ initGalaxy();
 initLog();
 initDrift();
 initEclipse();
+initPractice();
 
 function igniteFromMap(id) {
   unlockAudio();
@@ -299,6 +302,11 @@ const UNLOCKS = {
     body: 'One word of your sentence goes dark. Listen, then find it. Practice that sticks.',
     test: () => app.eclipse.available(),
   },
+  practice: {
+    name: 'Practice', short: 'translate sentences, review fading stars', title: 'Practice is online', open: () => app.practice.open(),
+    body: 'Build sentences from English prompts. Stars you have not used in a while dim — Review brings them back.',
+    test: () => app.practice.available(),
+  },
   drift: {
     name: 'Drift', short: 'fly through your sentences, read aloud', title: 'Drift is online', open: () => app.drift.start(),
     body: 'Autopilot: fly through fresh sentences and stories while they are read aloud.',
@@ -327,8 +335,23 @@ function updateDock() {
       body: h('ul', { class: 'toast-list' }, fresh.map((u) => h('li', {}, h('b', {}, u.name), ' — ', u.short))),
     }), 900);
   }
+  updateDueBadge();
   requestAnimationFrame(updateInsets);
 }
+
+/** The Practice button shows how many stars are due for review. */
+function updateDueBadge() {
+  const btn = $('#dock [data-action="practice"]');
+  if (!btn) return;
+  const n = dueIds().length;
+  let badge = btn.querySelector('.badge');
+  if (!n) { badge?.remove(); btn.title = 'Practice: translate and review (P)'; return; }
+  if (!badge) { badge = h('span', { class: 'badge' }); btn.querySelector('.ico').append(badge); }
+  badge.textContent = n > 99 ? '99+' : String(n);
+  btn.title = `Practice: ${n} star${n === 1 ? '' : 's'} due for review (P)`;
+}
+app.updateDueBadge = updateDueBadge;
+setInterval(updateDueBadge, 60000);
 
 // --------------------------------------------------------------- layout
 function updateInsets() {
@@ -362,6 +385,7 @@ const ACTIONS = {
   forge: () => app.forge.toggle(),
   galaxy: () => app.galaxy.toggle(),
   eclipse: () => app.eclipse.start(),
+  practice: () => app.practice.open(),
   drift: () => app.drift.start(),
   log: () => app.log.toggle(),
   fit: () => space.fitAll(),
@@ -405,6 +429,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'f' && unlocked('forge')) app.forge.toggle();
   else if (k === 'g' && unlocked('galaxy')) app.galaxy.toggle();
   else if (k === 'e' && unlocked('eclipse')) app.eclipse.start();
+  else if (k === 'p' && unlocked('practice')) app.practice.open();
   else if (k === 'd' && unlocked('drift')) app.drift.start();
   else if (k === 'l') app.log.toggle();
   else if (k === 'n') app.panels.addWordDialog();
@@ -483,7 +508,7 @@ function begin({ askLanguage = true } = {}) {
 
 // Development aid: open with ?debug to inspect the universe from the console.
 if (new URLSearchParams(location.search).has('debug')) {
-  window.lexicosmos = { app, derived, get state() { return state; } };
+  window.lexicosmos = { app, derived, commit, get state() { return state; } };
 }
 
 app.onUniverseReplaced = () => {

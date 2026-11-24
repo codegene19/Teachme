@@ -364,7 +364,7 @@ export default {
       mangiare: 'food', bere: 'drink', cucinare: 'food',
       prendere: 'food drink transport room ticket decision',
       comprare: 'food drink read watch ticket',
-      fare: 'food watch',
+      fare: 'watch',
       vedere: 'watch person place truth', guardare: 'watch truth',
       cercare: 'food drink read person money ticket room info idea time',
       leggere: 'read lesson', ascoltare: 'listen lesson info person',

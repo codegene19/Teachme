@@ -6,6 +6,7 @@ import { sentenceSegments, pickRandom, optionsFor, slotOf, surface, personAt, cl
 import { app, h, fill, icon, openModal, closeModal, toast } from './ui.js';
 import { arpeggio, chime, errorSound, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
+import { grade } from './memory.js';
 import { glossed } from './forge.js';
 
 export function initEclipse() {
@@ -72,6 +73,7 @@ function round() {
     });
     fill(hole, h('span', { class: 'w revealed', style: { '--c': cat.color } }, segs.find((s) => s.index === hiddenIdx).text));
     hole.classList.add('lit');
+    grade(answer, right);
     bumpStat('eclipses');
     bumpStat('made');
     if (right) {

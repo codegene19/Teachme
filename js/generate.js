@@ -5,10 +5,13 @@ import { state, derived, blueprints, resolveBlueprint } from './store.js';
 import { optionsFor, pickRandom, slotOf } from './language.js';
 
 /** Patterns you can build right now, favouring the newest (most complex) ones. */
-function patterns({ statementsOnly = false } = {}) {
-  return blueprints()
+function patterns({ statementsOnly = false, withTime = false } = {}) {
+  const all = blueprints()
     .filter((bp) => (!statementsOnly || bp.end === '.') && resolveBlueprint(bp))
     .map((bp) => ({ bp, weight: Math.pow(bp.l || 1, 1.3) }));
+  // stories that move through time need a time slot in every sentence
+  const timed = withTime ? all.filter((x) => x.bp.pattern.includes('[time]')) : [];
+  return timed.length ? timed : all;
 }
 
 function weighted(list) {
@@ -37,8 +40,8 @@ const fitsScene = (kind, place) => !kind || !place.scene || place.scene === 'any
  * One random sentence. `who` keeps the subject; `tense` keeps every time word
  * in the same tense family, so a story stays in one timeline.
  */
-export function randomSentence({ who = null, tense = null, statementsOnly = false } = {}) {
-  const list = patterns({ statementsOnly });
+export function randomSentence({ who = null, tense = null, statementsOnly = false, place = null, cast = null, withTime = false } = {}) {
+  const list = patterns({ statementsOnly, withTime });
   if (!list.length) return null;
   const bp = weighted(list);
   const r = resolveBlueprint(bp);
@@ -72,7 +75,8 @@ export function randomSentence({ who = null, tense = null, statementsOnly = fals
         if (fit.length) opts = fit;
       }
     }
-    if (slot === 'place') {
+    if (slot === 'place' && place && opts.includes(place)) opts = [place];
+    else if (slot === 'place') {
       // the place must suit the thing in this clause (a ticket at the station, not at the gym)
       let thing = null;
       for (let j = tokens.length - 1; j >= 0 && !thing; j--) {
@@ -89,10 +93,14 @@ export function randomSentence({ who = null, tense = null, statementsOnly = fals
     let pick = pickRandom(opts);
     if (slot === 'who' && firstWho && who && opts.includes(who)) pick = who;
     // a second subject in the same sentence is someone else
-    if (slot === 'who' && !firstWho && opts.length > 1) pick = pickRandom(opts.filter((id) => id !== tokens.find((x) => W[x.wordId]?.cat === 'who')?.wordId));
+    if (slot === 'who' && !firstWho && opts.length > 1) {
+      const first = tokens.find((x) => W[x.wordId]?.cat === 'who')?.wordId;
+      const others = (cast || []).filter((id) => id !== first && opts.includes(id));
+      pick = pickRandom(others.length ? others : opts.filter((id) => id !== first));
+    }
     if (slot === 'who') firstWho = false;
     if (slot === 'time' && tense) {
-      const same = opts.filter((id) => tenseOf(id) === tense);
+      const same = opts.filter((id) => tenseOf(id) === tense && (tense !== 'pres' || state.words[id].cat === 'time'));
       if (same.length) pick = pickRandom(same);
     }
     tokens.push({ ...t, wordId: pick || t.wordId });
@@ -122,6 +130,34 @@ export function randomStory(length = 3) {
   parts.slice(1).forEach((p, i) => {
     const free = links.length && !hasLink(p) && !hasLink(parts[i]) && !joins[i - 1];
     joins.push(free && Math.random() < 0.6 ? pickRandom(links) : null);
+  });
+  return { parts, joins };
+}
+
+const ARC = { arc: ['past', 'pres', 'fut'], past: ['past'], pres: ['pres'], fut: ['fut'] };
+
+/**
+ * Story mode: your characters, in one setting, along a timeline
+ * ("arc" = yesterday → today → tomorrow). Each sentence's subject is one of
+ * the characters; a second subject in the same sentence is another one.
+ */
+export function characterStory({ cast = [], place = null, timeline = 'arc', length = 5 } = {}) {
+  if (!canGenerate() || !cast.length) return null;
+  const times = derived.orbit.time || [];
+  const has = (t) => t === 'pres' ? times.some((id) => tenseOf(id) === 'pres') : times.some((id) => tenseOf(id) === t);
+  const phases = ARC[timeline].filter(has);
+  const parts = [];
+  for (let i = 0; i < length; i++) {
+    const phase = phases.length ? phases[Math.min(phases.length - 1, Math.floor((i * phases.length) / length))] : null;
+    const s = randomSentence({ who: cast[i % cast.length], tense: phase, place, cast, statementsOnly: true, withTime: !!phase });
+    if (s) parts.push({ tokens: s.tokens, end: s.end, name: s.name });
+  }
+  const links = derived.orbit.link || [];
+  const hasLink = (p) => p.tokens.some((t) => state.words[t.wordId]?.cat === 'link');
+  const joins = [];
+  parts.slice(1).forEach((p, i) => {
+    const free = links.length && !hasLink(p) && !hasLink(parts[i]) && !joins[i - 1];
+    joins.push(free && Math.random() < 0.45 ? pickRandom(links) : null);
   });
   return { parts, joins };
 }

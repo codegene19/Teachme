@@ -9,6 +9,7 @@ import { GALAXIES } from './seed.js';
 import { app, h, fill, $, icon, openModal, closeModal, toast } from './ui.js';
 import { PIPER_VOICES, piperStatus, preparePiper, onPiperStatus, storedVoices, removePiperVoice, piperLocal } from './piper.js';
 import { diskInfo } from './disk.js';
+import { dueLabel, brightness } from './memory.js';
 import { speak, getVoices, speechSupported, setSoundEnabled, voiceFor, voiceStatus, onVoicesChanged } from './sfx.js';
 
 export const TIERS = [
@@ -240,6 +241,9 @@ function renderCard() {
       h('span', { class: 'mastery-name' }, `✦ ${m.name}`),
       h('span', { class: 'bar' }, h('i', { style: { width: `${m.pct}%` } })),
       h('span', { class: 'mastery-n' }, `met ${w.seen}×`)),
+    w.lit && !w.character ? h('div', { class: `due-row${brightness(w) < 1 ? ' overdue' : ''}` },
+      h('span', {}, `◐ ${dueLabel(w)}`),
+      brightness(w) < 1 && app.practice?.available() ? h('button', { class: 'btn small ghost', onclick: () => { closeStarCard(); app.practice.open('review'); } }, 'Review now') : null) : null,
     h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Meaning / note'), note),
     neighbors.length ? h('div', { class: 'card-links' },
       h('div', { class: 'field-label' }, 'Linked stars'),

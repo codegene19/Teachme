@@ -4,16 +4,16 @@
 
 import {
   state, derived, on, commit, persist, bumpSeen, bumpStat, saveGalaxy, cosmicName,
-  emptyGalaxy, removePart, cloneTokens,
+  emptyGalaxy, removePart, cloneTokens, addCharacter, characters, findWord,
 } from './store.js';
 import {
   paragraphSegments, paragraphText, sentenceText, countParagraph, countTokens, formatBig, pickRandom, optionsFor,
 } from './language.js';
-import { app, h, fill, $, icon, toast, showPopover, hidePopover } from './ui.js';
+import { app, h, fill, $, icon, toast, showPopover, hidePopover, openModal, closeModal } from './ui.js';
 import { chime, arpeggio, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
 import { glossed } from './forge.js';
-import { randomStory, canGenerate } from './generate.js';
+import { randomStory, canGenerate, characterStory } from './generate.js';
 
 const root = $('#galaxy');
 let paraEl, partsEl, countEl, countLabel, nameInput, addSel, saveBtn, editTag;
@@ -45,12 +45,13 @@ export function initGalaxy() {
       h('button', { class: 'btn', onclick: shuffleAll }, icon('shuffle', 16), h('span', {}, 'Shuffle all')),
       h('button', { class: 'btn', onclick: speakAll }, icon('speak', 16), h('span', {}, 'Hear')),
       h('button', { class: 'btn accent-btn', onclick: () => writeStory() }, icon('spark', 16), h('span', {}, 'Write a story')),
+      h('button', { class: 'btn', onclick: () => storyMode() }, icon('star', 16), h('span', {}, 'Story mode…')),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn ghost', onclick: newDraft }, 'New'),
       saveBtn));
 
   on('change', () => { if (isOpen()) render(); });
-  app.galaxy = { open, close, toggle, isOpen, addPart, loadGalaxy, writeStory };
+  app.galaxy = { open, close, toggle, isOpen, addPart, loadGalaxy, writeStory, storyMode };
 }
 
 export const isOpen = () => !root.hidden;
@@ -311,6 +312,84 @@ export function writeStory(length = 3) {
   void paraEl.offsetWidth;
   paraEl.classList.add('warp');
   app.space.fitIds(pathIds(), { maxZ: 1, dur: 1000 });
+}
+
+// ------------------------------------------------------------ story mode
+const DEFAULT_CAST = { it: ['Marco', 'Giulia', 'Luca', 'Sofia'], es: ['Carlos', 'Lucía', 'Javier', 'Sofía'], en: ['Tom', 'Anna', 'Sam', 'Lily'] };
+const story = { cast: null, place: '', timeline: 'arc', length: 5 };
+
+/** Story mode: name your characters, pick a setting and a timeline, and the stars write their story. */
+export function storyMode() {
+  if (!canGenerate()) {
+    toast({ kind: 'info', title: 'Not enough stars yet', body: 'Light a few more stars so full patterns can form.' });
+    return;
+  }
+  const known = characters().map((w) => w.text);
+  const names = [...new Set([...known, ...(DEFAULT_CAST[state.pack] || DEFAULT_CAST.en)])];
+  if (!story.cast) story.cast = new Set(names.slice(0, 2));
+  const castRow = h('div', { class: 'cast-row', role: 'group', 'aria-label': 'Characters' });
+  const drawCast = () => fill(castRow, names.map((n) => h('button', {
+    class: `cast-chip${story.cast.has(n) ? ' on' : ''}`, 'aria-pressed': String(story.cast.has(n)),
+    onclick: () => { story.cast.has(n) ? story.cast.delete(n) : story.cast.add(n); drawCast(); },
+  }, n)));
+  drawCast();
+  const nameIn = h('input', { class: 'text-input', placeholder: 'Add a character…', maxlength: 24, 'aria-label': 'New character name' });
+  const addName = () => {
+    const n = nameIn.value.trim().replace(/\s+/g, ' ');
+    if (!n) return;
+    const nice = n.charAt(0).toUpperCase() + n.slice(1);
+    const clash = findWord(nice);
+    if (clash && clash.cat !== 'who') { toast({ kind: 'warn', title: `“${nice}” is already a word`, body: 'Pick another name for your character.' }); return; }
+    if (!names.includes(nice)) names.push(nice);
+    story.cast.add(nice);
+    nameIn.value = '';
+    drawCast();
+  };
+  nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addName(); } });
+  const places = (derived.orbit.place || []).filter((id) => state.words[id]?.lit);
+  const placeSel = h('select', { class: 'select', 'aria-label': 'Setting', onchange: (e) => { story.place = e.target.value; } },
+    h('option', { value: '' }, 'Anywhere'),
+    places.map((id) => h('option', { value: id, selected: story.place === id }, `${state.words[id].text} — ${state.words[id].gloss || ''}`)));
+  const radio = (key, opts) => h('div', { class: 'seg', role: 'radiogroup' }, opts.map(([v, label]) => h('button', {
+    class: `tense-tab${String(story[key]) === String(v) ? ' active' : ''}`, role: 'radio', 'aria-checked': String(String(story[key]) === String(v)),
+    onclick: (e) => { story[key] = v; e.currentTarget.parentNode.querySelectorAll('button').forEach((b) => { const on = b === e.currentTarget; b.classList.toggle('active', on); b.setAttribute('aria-checked', String(on)); }); },
+  }, label)));
+  const go = () => {
+    if (nameIn.value.trim()) addName();
+    const cast = [...story.cast].map((n) => addCharacter(n)).filter(Boolean).map((w) => w.id);
+    if (!cast.length) { toast({ kind: 'info', title: 'Choose a character', body: 'Pick at least one character for the story.' }); return; }
+    const place = story.place && state.words[story.place]?.lit ? story.place : null;
+    const st = characterStory({ cast, place, timeline: story.timeline, length: story.length });
+    if (!st || !st.parts.length) { toast({ kind: 'info', title: 'Not enough stars yet', body: 'Light a few more stars so full patterns can form.' }); return; }
+    closeModal();
+    const who = cast.map((id) => state.words[id].text);
+    const title = `${who.length > 2 ? `${who.slice(0, -1).join(', ')} & ${who.at(-1)}` : who.join(' & ')}${place ? ` · ${state.words[place].text}` : ''}`;
+    state.galaxyDraft = { parts: st.parts, joins: st.joins, name: title.slice(0, 40), editingId: null };
+    bumpStat('made');
+    bumpStat('stories');
+    bumpSeen(pathIds());
+    commit();
+    if (!isOpen()) open();
+    root.scrollTop = 0;
+    unlockAudio();
+    arpeggio(pathIds().map((id) => state.words[id]?.cat), 0.05);
+    paraEl.classList.remove('warp');
+    void paraEl.offsetWidth;
+    paraEl.classList.add('warp');
+    app.space.fitIds(pathIds(), { maxZ: 1, dur: 1000 });
+  };
+  openModal({
+    kicker: 'Galaxy · Story mode', title: 'Write a story', size: 'wide story',
+    body: h('div', { class: 'stack' },
+      h('p', { class: 'lede' }, 'Your characters become stars. Every word in the story stays a variable — tap any word to turn it.'),
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Characters'), castRow,
+        h('div', { class: 'inline-add' }, nameIn, h('button', { class: 'btn small', onclick: addName }, icon('plus', 16), 'Add'))),
+      h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Setting'), placeSel),
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Timeline'),
+        radio('timeline', [['arc', 'Yesterday → today → tomorrow'], ['past', 'Past'], ['pres', 'Present'], ['fut', 'Future']])),
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Length'), radio('length', [[3, '3 sentences'], [5, '5'], [7, '7']]))),
+    footer: [h('button', { class: 'btn ghost', onclick: closeModal }, 'Cancel'), h('span', { class: 'grow' }), h('button', { class: 'btn primary', onclick: go }, icon('spark', 16), 'Write it')],
+  });
 }
 
 export function loadGalaxy(id) {

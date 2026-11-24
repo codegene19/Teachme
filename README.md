@@ -35,7 +35,9 @@ The verb follows the subject: switch *io* to *noi* and *voglio* becomes *vogliam
 4. **Save** it as a constellation. It's drawn into your sky, and the number of *sentences within reach* climbs.
 5. **Galaxy**: chain constellations into paragraphs and spin the links between them.
 6. **Eclipse**: one word of a sentence goes dark. You hear the sentence, then pick the missing word — active recall using your own patterns.
-7. **Drift**: autopilot. The camera flies star to star through freshly generated sentences while they're read aloud.
+7. **Practice** (`P`): an English sentence appears; build it from word tiles. The bank hides tempting wrong forms — the same verb in another person or tense, a neighbouring noun — and the feedback names the exact slip (“*ordinava* is the imperfetto; this sentence is in the futuro: *ordinerà*”).
+8. **Review**: every lit star has a memory schedule. It comes due a day after you light it; each right answer pushes the next review further out (×2, then ×2.5, up to six months), and a miss brings it back within hours. **Stars that are due dim on the map**, the Practice button shows how many are waiting, and the star card says when each word is next due. Review builds its sentences around the dimmest words. Eclipse answers count too.
+9. **Drift**: autopilot. The camera flies star to star through freshly generated sentences while they're read aloud.
 
 Hidden constellations (*First Light, Curiosity, Binary Star…*) appear in the sky once you've lit every star they need. Seventeen missions guide you from one word to a million sentences within reach.
 
@@ -56,6 +58,7 @@ Italian and Spanish each hold about 275 high-frequency words in 20 levels (11–
 
 - **Surprise me** (Forge, `R`) builds a fresh sentence from any pattern you've reached, with every slot filled from your lit stars.
 - **Write a story** (Galaxy, `T`) builds a short paragraph: one subject, one timeline, joined by your bridge words.
+- **Story mode** (Galaxy → *Story mode…*): pick or name characters (*Marco, Giulia*, or your own), a setting from your lit places, a timeline (*yesterday → today → tomorrow*, or one tense) and a length. The story follows the timeline with matching time words and tenses, and the characters take turns as subjects. Every word stays a variable, and characters become stars you can use anywhere.
 - **Drift** mixes generated sentences and stories with your saved ones, so it works from level 2 even if you haven't saved anything.
 
 Generated sentences only pair words that make sense together. Every noun has a kind (food, drink, reading, people, ideas, problems, goals…), and every verb lists the kinds it takes: you *mangi* food, *risolvi* problems, *cogli* opportunities, and *sapere* only takes skills (*so cucinare*). Places are matched too: every place has a scene (home, café, station, library, gym…), so generated sentences put tickets at the station and books at the library. Spinning variables by hand stays free.
@@ -80,7 +83,7 @@ There's also an English starter (80 words, revealed through their neighbours rat
 
 ### Keyboard
 
-`F` Forge · `R` surprise sentence · `T` write a story · `G` Galaxy · `E` Eclipse · `D` Drift · `L` Logbook · `N` new word · `S` shuffle · `V` hear · `0` show everything · `Esc` close
+`F` Forge · `R` surprise sentence · `T` write a story · `G` Galaxy · `E` Eclipse · `P` Practice · `D` Drift · `L` Logbook · `N` new word · `S` shuffle · `V` hear · `0` show everything · `Esc` close
 
 Drag to pan, scroll or pinch to zoom. Double-click a star to add it to your sentence; double-click empty space to dive in.
 
@@ -135,6 +138,9 @@ Without the script, any static server works (`python3 -m http.server 8000`) or G
 | `js/forge.js` | Sentence-template builder with variables |
 | `js/galaxy.js` | Paragraph builder |
 | `js/eclipse.js` | Listening quiz |
+| `js/practice.js` | Translation challenges and review sessions |
+| `js/memory.js` | Spaced-review schedule, star dimming |
+| `js/english.js` | English renderings of generated sentences (person, tense, negation, modals, adverb order) |
 | `js/drift.js` | Autopilot |
 | `js/logbook.js`, `js/missions.js` | Star chart, saved work, missions |
 | `js/panels.js` | Star card, word dialogs, sector picker, settings |

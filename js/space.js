@@ -5,6 +5,7 @@
 import { state, derived, anchorOf, hashStr } from './store.js';
 import { GALAXIES } from './seed.js';
 import { hexA } from './ui.js';
+import { brightness } from './memory.js';
 
 const TAU = Math.PI * 2;
 const Z_MIN = 0.015, Z_MAX = 2.6;
@@ -358,6 +359,7 @@ export function createSpace(canvas, handlers = {}) {
     const z = cam.z;
     const zs = 0.65 + 0.35 * Math.min(1.6, z);
     const drawn = [];
+    const clock = Date.now();
     ctx.globalCompositeOperation = 'lighter';
     for (const w of derived.list) {
       if (!visible(w)) continue;
@@ -375,10 +377,13 @@ export function createSpace(canvas, handlers = {}) {
         r = starRadius(w) * zs * s;
         const g = r * 11;
         const spr = sprite(colorOf(w));
-        ctx.globalAlpha = 0.95 * tw;
+        // stars you have not reviewed in a while fade until you practise them
+        const b = brightness(w, clock);
+        if (b < 1) r *= 0.75 + 0.25 * b;
+        ctx.globalAlpha = 0.95 * tw * b;
         ctx.drawImage(spr, sx - g, sy - g, g * 2, g * 2);
         const g2 = r * 3.4;
-        ctx.globalAlpha = 0.9;
+        ctx.globalAlpha = 0.9 * b;
         ctx.drawImage(spr, sx - g2, sy - g2, g2 * 2, g2 * 2);
       } else {
         let fade = 1;
