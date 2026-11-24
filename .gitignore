@@ -1,0 +1,4 @@
+# created by run.py
+local/
+data/
+__pycache__/

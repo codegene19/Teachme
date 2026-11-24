@@ -99,17 +99,24 @@ Piper needs internet access to `huggingface.co` (the voice files), `cdn.jsdelivr
 
 ## Running it
 
-No build step and no dependencies: just static files using ES modules. Serve the folder over HTTP (modules don't load from `file://`):
+The easiest way is the run script. It needs only Python 3.8+ (no packages to install):
 
 ```bash
-python3 -m http.server 8000
+./run.sh            # macOS / Linux   (or: python3 run.py)
 ```
 
-Then open <http://localhost:8000>.
+On Windows, double-click `run.bat`.
 
-To publish on GitHub Pages: **Settings → Pages → Deploy from a branch**, pick the branch and `/ (root)`.
+On first run it:
+1. Downloads Piper's runtime (~40 MB, from the npm registry) into `local/piper/`, so natural voices don't depend on CDNs.
+2. Asks which Piper voices to download (`--voices it_IT-paola-medium,es_ES-davefx-medium`, `all` or `none`). Voices you pick later in the app are downloaded there too.
+3. Serves the app on http://127.0.0.1:8000 (only reachable from your computer) and opens it.
 
-Your universe is saved in the browser's `localStorage`. Use **Settings → Export** to back it up or move it to another device.
+**Auto-save.** Every change is saved at once in the browser. When run.py serves the app, it is also saved to `data/universe.json` a moment later, with a rolling backup every 10 minutes in `data/backups/` (last 30 kept). On start the app loads whichever copy is newer, so clearing the browser loses nothing. The HUD briefly shows "saved to disk" after each write.
+
+Other options: `--port 8080`, `--no-browser`, `--setup-only`.
+
+Without the script, any static server works (`python3 -m http.server 8000`) or GitHub Pages (**Settings → Pages → Deploy from a branch**). The universe is then saved only in the browser; use **Settings → Export** to back it up.
 
 ## Code map
 

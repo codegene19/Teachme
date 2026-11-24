@@ -7,7 +7,8 @@ import {
 import { PACKS, PACK_ORDER } from './packs/index.js';
 import { GALAXIES } from './seed.js';
 import { app, h, fill, $, icon, openModal, closeModal, toast } from './ui.js';
-import { PIPER_VOICES, piperStatus, preparePiper, onPiperStatus, storedVoices, removePiperVoice } from './piper.js';
+import { PIPER_VOICES, piperStatus, preparePiper, onPiperStatus, storedVoices, removePiperVoice, piperLocal } from './piper.js';
+import { diskInfo } from './disk.js';
 import { speak, getVoices, speechSupported, setSoundEnabled, voiceFor, voiceStatus, onVoicesChanged } from './sfx.js';
 
 export const TIERS = [
@@ -68,6 +69,8 @@ export function installSteps(L) {
 /** Device voice or Piper, and Piper's voice, download state and storage. */
 function engineSection() {
   const wrap = h('div', { class: 'stack engine' });
+  let localMode = false;
+  piperLocal().then((l) => { localMode = !!l; });
   let statusEl = null;
   const statusLine = (vid) => {
     const st = piperStatus(vid);
@@ -81,7 +84,9 @@ function engineSection() {
     }
     if (st.state === 'error') {
       return h('div', { class: 'voice-status warn' }, h('b', {}, 'Piper could not load here'),
-        h('p', {}, 'It needs internet access to huggingface.co (the voices) and two script CDNs. The Claude preview blocks these, so use the GitHub-hosted app. Until then the device voice speaks.'),
+        h('p', {}, localMode
+          ? `The voice file could not be downloaded. run.py fetches it once from huggingface.co: check your internet connection, or run "python3 run.py --voices ${vid}". Until then the device voice speaks.`
+          : 'It needs internet access to huggingface.co (the voices) and two script CDNs. The Claude preview blocks these; run the app with run.py or from GitHub Pages. Until then the device voice speaks.'),
         h('small', {}, st.error));
     }
     return h('p', { class: 'voice-status note' }, `${v?.name} downloads the first time it speaks (${v?.note.split(' · ').pop()}), then works offline. You can download it now.`);
@@ -91,6 +96,7 @@ function engineSection() {
     const list = PIPER_VOICES[state.pack] || [];
     const vid = piperVoice();
     const stored = engine === 'piper' && list.length ? await storedVoices() : [];
+    const loc = await piperLocal();
     const st = vid ? piperStatus(vid) : { state: 'idle' };
     const radio = (val, title, desc, disabled = false) => h('label', { class: `engine-opt${engine === val ? ' active' : ''}${disabled ? ' disabled' : ''}` },
       h('input', { type: 'radio', name: 'voice-engine', value: val, checked: engine === val, disabled, onchange: () => {
@@ -116,7 +122,8 @@ function engineSection() {
         statusEl,
         h('div', { class: 'row wrap' },
           st.state === 'idle' || st.state === 'error' ? h('button', { class: 'btn small', onclick: () => { preparePiper(vid); draw(); } }, icon('download', 16), st.state === 'error' ? 'Try again' : 'Download now') : null,
-          stored.includes(vid) ? h('button', { class: 'btn small ghost danger', onclick: async () => { await removePiperVoice(vid); draw(); } }, icon('trash', 16), 'Remove from this device') : null),
+          stored.includes(vid) && !loc ? h('button', { class: 'btn small ghost danger', onclick: async () => { await removePiperVoice(vid); draw(); } }, icon('trash', 16), 'Remove from this device') : null),
+        loc ? h('p', { class: 'lede dim' }, `Running locally: voices are kept in local/piper/voices/ (${stored.length ? `on disk: ${stored.map((id) => (list.find((v) => v.id === id) || { name: id }).name).join(', ')}` : 'none yet'}). Others download there when you pick them.`) : null,
       ] : null);
   };
   draw();
@@ -485,7 +492,10 @@ export function settings(section) {
           : h('p', { class: 'lede' }, 'Speech is not available in this browser.')),
       h('section', { class: 'set-group' },
         h('h3', {}, 'Universe'),
-        h('p', { class: 'lede' }, 'Your universe lives in this browser. Export it as a file (or copy it as text) to keep a backup or move it to another device. Import accepts a file or pasted text.'),
+        diskInfo()
+          ? h('p', { class: 'voice-status ok' }, `✓ Auto-save is on: every change is saved to ${diskInfo().file} on this computer, with backups in data/backups/.`)
+          : h('p', { class: 'lede' }, 'Every change is saved automatically in this browser. To also save to a file on your computer, run the app with run.py (see the README).'),
+        h('p', { class: 'lede' }, 'Export it as a file (or copy it as text) to keep a backup or move it to another device. Import accepts a file or pasted text.'),
         h('div', { class: 'row wrap' },
           h('button', { class: 'btn', onclick: () => {
             const blob = new Blob([exportUniverse()], { type: 'application/json' });

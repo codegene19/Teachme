@@ -1,6 +1,7 @@
 // Lexicosmos — boot and wiring.
 
 import {
+  importUniverse, exportUniverse,
   load, state, derived, on, persist, saveNow, ignite, resolveBlueprint, markHint,
   pack, hasLevels, blueprints, levelProgress, levelUp,
 } from './store.js';
@@ -17,10 +18,19 @@ import { initEclipse } from './eclipse.js';
 import { checkMissions, pendingMissions, doneCount, MISSIONS } from './missions.js';
 import { runGenesis } from './genesis.js';
 import { canGenerate } from './generate.js';
+import { detectDisk, loadFromDisk, queueDiskSave, flushDiskNow, onDiskSave, diskInfo } from './disk.js';
 import { preparePiper, onPiperStatus, piperStatus } from './piper.js';
 import { piperVoice } from './panels.js';
 
 load();
+// Run locally with run.py, the universe also lives in data/universe.json:
+// start from whichever copy is newer, the browser's or the file's.
+if (await detectDisk()) {
+  const fromDisk = await loadFromDisk();
+  if (fromDisk && (fromDisk.savedAt || 0) > (state.savedAt || 0)) {
+    try { importUniverse(fromDisk); } catch (err) { console.warn('Could not load the saved file:', err); }
+  }
+}
 setSoundEnabled(state.settings.sound);
 
 const space = createSpace($('#space'), {
@@ -407,7 +417,28 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
-window.addEventListener('pagehide', saveNow);
+// ------------------------------------------------------------ auto-save
+// Every change is saved to the browser at once and, when run.py serves the
+// app, to data/universe.json a moment later. The HUD shows where it went.
+const saveEl = $('#saveState');
+let saveFade = null;
+function showSaved(text, title) {
+  saveEl.textContent = text;
+  saveEl.title = title;
+  saveEl.classList.add('on');
+  clearTimeout(saveFade);
+  saveFade = setTimeout(() => saveEl.classList.remove('on'), 2200);
+}
+on('saved', ({ browser }) => {
+  if (diskInfo()) queueDiskSave(exportUniverse());
+  else if (browser) showSaved('saved', 'Saved in this browser. Run run.py to also save to a file.');
+  else showSaved('not saved', 'This browser is blocking storage: export your universe from Settings to keep it.');
+});
+onDiskSave(({ ok, file }) => showSaved(ok ? 'saved to disk' : 'disk save failed',
+  ok ? `Saved to ${file} at ${new Date().toLocaleTimeString()}` : 'The local server did not answer; your universe is still saved in this browser.'));
+if (diskInfo()) queueDiskSave(exportUniverse());
+
+window.addEventListener('pagehide', () => { saveNow(); flushDiskNow(diskInfo() ? exportUniverse() : null); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
 
 // ---------------------------------------------------------------- start

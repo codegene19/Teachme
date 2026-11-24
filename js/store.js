@@ -272,7 +272,10 @@ function applyGrammar() {
 let saveTimer = null;
 export function saveNow() {
   clearTimeout(saveTimer);
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage unavailable — stay in memory */ }
+  state.savedAt = Date.now();
+  let ok = true;
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { ok = false; /* storage unavailable — stay in memory */ }
+  emit('saved', { browser: ok });
 }
 export function persist() {
   clearTimeout(saveTimer);

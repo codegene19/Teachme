@@ -38,7 +38,28 @@ function setStatus(voiceId, s) {
   listeners.forEach((fn) => { try { fn(voiceId); } catch { /* ignore */ } });
 }
 
-const loadLib = () => (lib ||= import(LIB).catch((err) => { lib = null; throw err; }));
+// When run.py serves the app it puts Piper's runtime and voices in local/piper/,
+// so nothing has to come from a CDN or from Hugging Face.
+let local = null;
+function localPiper() {
+  if (!local) {
+    local = fetch(new URL('../local/piper/manifest.json', import.meta.url), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((m) => {
+        if (!m?.runtime) return null;
+        const at = (path) => new URL(`../local/piper/${path}`, import.meta.url).href;
+        globalThis.PIPER_HF_BASE = at('voices');
+        globalThis.PIPER_ORT_URL = at('ort/ort.wasm.min.js');
+        return { ...m, wasmPaths: { onnxWasm: at('ort/'), piperData: at('phonemize/piper_phonemize.data'), piperWasm: at('phonemize/piper_phonemize.wasm') } };
+      });
+  }
+  return local;
+}
+/** Whether Piper runs from local files (run.py), and which voices are already on disk. */
+export const piperLocal = () => localPiper();
+
+const loadLib = () => (lib ||= localPiper().then(() => import(LIB)).catch((err) => { lib = null; throw err; }));
 
 /** Load (and if needed download) a voice. Safe to call repeatedly. */
 export function preparePiper(voiceId) {
@@ -46,11 +67,13 @@ export function preparePiper(voiceId) {
   setStatus(voiceId, { state: 'loading', progress: 0, error: null });
   const p = (async () => {
     const { TtsSession } = await loadLib();
+    const loc = await localPiper();
     // The library shares one session and never reloads its model when the
     // voice changes, so start a fresh one for each voice.
     TtsSession._instance = null;
     const session = await TtsSession.create({
       voiceId,
+      ...(loc ? { wasmPaths: loc.wasmPaths } : {}),
       progress: (pr) => { if (pr?.total && /\.onnx$/.test(pr.url || '')) setStatus(voiceId, { progress: pr.loaded / pr.total }); },
     });
     setStatus(voiceId, { state: 'ready', progress: 1 });
@@ -66,6 +89,10 @@ export function preparePiper(voiceId) {
 
 /** Voices already saved on this device. */
 export async function storedVoices() {
+  const loc = await localPiper();
+  if (loc) {
+    try { return (await (await fetch(new URL('../local/piper/manifest.json', import.meta.url), { cache: 'no-store' })).json()).voices || []; } catch { return loc.voices || []; }
+  }
   try { return await (await loadLib()).stored(); } catch { return []; }
 }
 
