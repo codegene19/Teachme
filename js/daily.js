@@ -35,7 +35,7 @@ const STEPS = [
   { id: 'translate', label: 'Translate sentences', unit: 'sentences', open: () => app.practice.open('translate') },
   { id: 'listen', label: 'Listen and build', unit: 'sentence', open: () => app.practice.open('listen') },
   { id: 'speak', label: 'Say a sentence aloud', unit: 'sentence', open: () => app.practice.open('translate'), how: 'After checking an answer, tap “Say it”.' },
-  { id: 'story', label: 'Write a story', unit: 'story', open: () => { closeModal(); app.galaxy.storyMode(); } },
+  { id: 'story', label: 'Write a story', unit: 'story', how: 'Choose its steps through to the end.', open: () => { closeModal(); app.galaxy.storyMode(); } },
 ];
 
 function doneOf(id, d = day()) {
