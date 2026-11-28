@@ -142,6 +142,18 @@ export function englishFor(tokens, words, end = '.') {
       lastModal = { g, pastish: tenses[i] === 'past' || tenses[i] === 'imp' };
       return;
     }
+    // English puts the describing word before the noun: "a new house", "an old car"
+    if (w.cat === 'quality') {
+      for (let j = out.length - 1; j >= 0; j--) {
+        const m = out[j].match(/^(a|an|the|some)\s+(.*)$/i);
+        if (words[tokens[i - 1]?.wordId]?.cat !== 'thing') break;
+        if (m) {
+          const art = /^(a|an)$/i.test(m[1]) ? (/^[aeiou]/i.test(g) ? 'an' : 'a') : m[1];
+          out[j] = `${art} ${g} ${m[2]}`;
+        } else out[j] = `${g} ${out[j]}`;
+        return;
+      }
+    }
     out.push(g);
   });
   let text = out.join(' ').replace(/ ,\u0000/g, ', ').replace(/\u0000/g, '');

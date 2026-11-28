@@ -11,6 +11,7 @@ import { mastery } from './panels.js';
 import { litSeries, answerSeries, accuracy, practiceStreak, weakSpots, slipText } from './progress.js';
 import { dueIds, dueLabel } from './memory.js';
 import { lineChart, answerBars } from './charts.js';
+import { calendar, orbitStreak } from './daily.js';
 
 const root = $('#log');
 let tab = 'stars';
@@ -218,15 +219,16 @@ function progress() {
     h('div', { class: 'stat-tiles' },
       tile(String(derived.litCount), 'stars lit'),
       tile(acc ? `${acc.pct}%` : '—', 'right, 7 days', acc ? `${acc.total} answers` : 'no practice yet'),
-      tile(String(streak), streak === 1 ? 'day in a row' : 'days in a row'),
+      tile(String(orbitStreak()), 'orbit streak', `${streak} day${streak === 1 ? '' : 's'} practised in a row`),
       tile(String(due), 'due for review')),
     due && canPractise ? h('button', { class: 'btn small', onclick: () => app.practice.open('review') }, `Review ${due} fading star${due === 1 ? '' : 's'}`) : null,
+    app.daily ? calendar() : null,
     lineChart({ title: 'Stars lit · last 30 days', data: litSeries(30), unit: 'stars' }),
     answerBars({ title: 'Practice answers · last 14 days', data: answerSeries(14) }),
     h('h4', { class: 'log-sub' }, 'Weak spots'),
     spots.length
       ? h('ul', { class: 'weak-list' }, spots.map(({ slip, n }) => h('li', {},
-        h('span', { class: `weak-kind ${slip.kind}` }, { person: 'Person', tense: 'Tense', word: 'Word', order: 'Order' }[slip.kind]),
+        h('span', { class: `weak-kind ${slip.kind}` }, { person: 'Person', tense: 'Tense', word: 'Word', order: 'Order', agree: 'Agree' }[slip.kind]),
         h('div', { class: 'weak-main' },
           h('b', {}, slipText(slip)),
           h('small', {}, `${n} slip${n === 1 ? '' : 's'}${slip.kind === 'word' && state.words[slip.id] ? ` · ${dueLabel(state.words[slip.id])}` : ''}`)),

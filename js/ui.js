@@ -64,6 +64,7 @@ const ICONS = {
   orbit: '<circle cx="12" cy="12" r="2.4"/><ellipse cx="12" cy="12" rx="9.5" ry="4" transform="rotate(-24 12 12)"/>',
   pin: '<circle cx="12" cy="12" r="3.4"/><circle cx="12" cy="12" r="8" stroke-dasharray="2 3"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  mic: '<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
   stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
   download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
@@ -88,6 +89,7 @@ export function hexA(hex, a) {
 const KICKERS = {
   signal: '◌ Incoming transmission',
   mission: '✦ Mission complete',
+  orbit: '◎ Daily orbit',
   sector: '◎ New sector discovered',
   sighting: '✧ Constellation sighted',
   level: '▲ New level reached',
@@ -109,11 +111,15 @@ export function trimToasts(incoming = 0) {
   }
 }
 
-const PRIORITY = { level: 4, sighting: 3, sector: 2, signal: 2, mission: 1, warn: 2, info: 0 };
+const PRIORITY = { orbit: 5, level: 4, sighting: 3, sector: 2, signal: 2, mission: 1, warn: 2, info: 0 };
 
 export function toast({ kind = 'signal', title, body, action, timeout = 6000, color } = {}) {
   const box = $('#toasts');
   if (!box) return;
+  // when the stack is full of more important news, a lesser toast doesn't push it out
+  const p = PRIORITY[kind] ?? 1;
+  const live = [...box.children].filter((t) => !t.classList.contains('out'));
+  if (live.length >= toastLimit() && live.every((t) => Number(t.dataset.p) > p)) return;
   trimToasts(1);
   let timer = null;
   const el = h('div', { class: `toast toast-${kind}`, role: 'status', 'data-p': String(PRIORITY[kind] ?? 1), style: color ? { '--c': color } : null },

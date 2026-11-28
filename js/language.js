@@ -5,6 +5,10 @@
 //   forms  — six present-tense forms (I, you, he/she, we, you all, they)
 //   num    — [singular, plural] forms (adjectives)
 //   person — 0..5 for subject pronouns
+//   agr    — [m sg, f sg, m pl, f pl] for words that agree in gender too:
+//            feelings agree with their subject ("lei è stanca"), qualities
+//            with the noun before them ("una casa nuova", "i biglietti cari")
+//   gender / plural — on subjects and nouns ("la casa" → f, "i soldi" → plural)
 // Each verb/adjective agrees with the nearest subject *before* it, so
 // "io voglio … perché tu hai …" conjugates each clause on its own.
 // A token may carry `inf` (use the infinitive), `slot` (the sector a variable
@@ -17,7 +21,7 @@ export const norm = (s) => String(s ?? '').toLowerCase().replace(APOS, "'").repl
 export const fold = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 export const cap = (s) => (s ? s.charAt(0).toLocaleUpperCase() + s.slice(1) : s);
 
-let G = { invert: false };
+let G = { invert: false, selfGender: 'm' };
 /** Language-wide rules, e.g. Spanish opening marks ¿ ¡. */
 export function setGrammar(g) { G = { ...G, ...g }; }
 
@@ -66,6 +70,30 @@ export function personAt(tokens, words, i) {
 }
 
 /**
+ * What an agreeing word agrees with: { g: 'm' | 'f', pl, with: token index }.
+ * Qualities follow the nearest noun before them in the clause; everything
+ * else follows its subject. Subjects with no fixed gender (io, tu, yo…) use
+ * your own setting.
+ */
+export function agreeAt(tokens, words, i) {
+  const w = words[tokens[i]?.wordId];
+  if (w?.cat === 'quality' || tokens[i]?.slot === 'quality') {
+    for (let j = i - 1; j >= 0; j--) {
+      const o = words[tokens[j]?.wordId];
+      if (!o || o.cat === 'link') break;
+      if (o.cat === 'thing') return { g: o.gender || 'm', pl: !!o.plural, with: j };
+    }
+    return { g: 'm', pl: false, with: -1 };
+  }
+  for (let j = i - 1; j >= 0; j--) {
+    const o = words[tokens[j]?.wordId];
+    if (o && o.person != null) return { g: o.gender || G.selfGender || 'm', pl: o.person >= 3, with: j, own: !o.gender };
+  }
+  const p = tokens[i]?.person ?? 0;
+  return { g: G.selfGender || 'm', pl: p >= 3, with: -1, own: true };
+}
+
+/**
  * The tense of every token. A clause (split at LINK words) takes its tense
  * from its time word: "ieri" → past, "a quei tempi" → imperfect, "domani" or
  * "oggi" → present. A clause without one inherits the previous clause's tense,
@@ -94,8 +122,13 @@ export function clauseTenses(tokens, words, start = 'pres') {
 }
 
 /** The form of a word as it appears in this slot. */
-export function surface(word, token = {}, person = 0, tense = 'pres') {
+export function surface(word, token = {}, person = 0, tense = 'pres', agree = null) {
   if (!word) return '';
+  if (word.agr) {
+    const pl = agree ? agree.pl : person >= 3;
+    const g = agree ? agree.g : G.selfGender;
+    return word.agr[(pl ? 2 : 0) + (g === 'f' ? 1 : 0)] ?? word.text;
+  }
   if (word.forms) {
     if (token.inf) return word.text;
     const table = tense !== 'pres' && word.tenses?.[tense] ? word.tenses[tense] : word.forms;
@@ -117,12 +150,13 @@ export function sentenceSegments(tokens, words, { capitalize = true, end, tense:
     let sep = segs.length ? ' ' : '';
     if (segs.length && w.cat === 'link' && w.comma) sep = ', ';
     const person = personAt(tokens, words, i);
-    let text = surface(w, t, person, tenses[i]);
+    const agree = w.agr ? agreeAt(tokens, words, i) : null;
+    let text = surface(w, t, person, tenses[i], agree);
     if (!segs.length && capitalize) text = cap(text);
     segs.push({
       kind: 'word', text, sep, wordId: w.id, index: i, isVar: !!t.var, cat: w.cat,
       slot: t.slot || w.cat, gloss: w.gloss || '', inflected: text.toLowerCase() !== w.text.toLowerCase(),
-      tense: tenses[i], person,
+      tense: tenses[i], person, agree,
     });
   });
   const open = capitalize && segs.length ? opener(end) : '';

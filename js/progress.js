@@ -15,11 +15,11 @@ function hist() {
 export const personName = (p) => (pack()?.persons?.[p] || ['I', 'you', 'he/she', 'we', 'you all', 'they'][p] || '').split(' / ')[0];
 export const tenseName = (t) => pack()?.tenseNames?.[t] || { pres: 'present', past: 'past', imp: 'imperfect', fut: 'future' }[t] || t;
 
-const slipKey = (s) => (s.kind === 'word' ? `word:${s.id}` : s.kind === 'order' ? `order:${s.cat}` : `${s.kind}:${s.from}>${s.to}`);
+const slipKey = (s) => (s.kind === 'word' ? `word:${s.id}` : (s.kind === 'order' || s.kind === 'agree') ? `${s.kind}:${s.cat}` : `${s.kind}:${s.from}>${s.to}`);
 function parseKey(k) {
   const [kind, rest] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
   if (kind === 'word') return { kind, id: rest };
-  if (kind === 'order') return { kind, cat: rest };
+  if (kind === 'order' || kind === 'agree') return { kind, cat: rest };
   const [from, to] = rest.split('>');
   return kind === 'person' ? { kind, from: +from, to: +to } : { kind, from, to };
 }
@@ -32,6 +32,13 @@ export function recordAnswer(ok, mode = 'translate') {
   d[mode] = (d[mode] || 0) + 1;
 }
 
+/** One spoken try: how much of the sentence came through (0–1). */
+export function recordSpoken(score) {
+  const d = (hist().days[dayKey()] ||= { right: 0, total: 0 });
+  d.spoken = (d.spoken || 0) + 1;
+  d.spokenScore = (d.spokenScore || 0) + score;
+}
+
 /** A slip, or (delta −1) a slip put right in a focused session. */
 export function recordSlip(slip, delta = 1) {
   const slips = hist().slips;
@@ -42,13 +49,17 @@ export function recordSlip(slip, delta = 1) {
 
 const ORDER_NAMES = {
   neg: '“not” words', freq: 'how-often words', time: 'time words', who: 'subjects', link: 'linking words',
-  inf: 'infinitives', verb: 'verbs', thing: 'objects', place: 'places', feeling: 'descriptions',
+  inf: 'infinitives', verb: 'verbs', thing: 'objects', place: 'places', feeling: 'descriptions', quality: 'describing words',
 };
 const ORDER_CATS = { neg: 'core', inf: 'action', verb: 'action' };
 
 export function slipText(s) {
   if (s.kind === 'person') return `“${personName(s.from)}” form where “${personName(s.to)}” is needed`;
   if (s.kind === 'tense') return `${tenseName(s.from)} instead of ${tenseName(s.to)}`;
+  if (s.kind === 'agree') {
+    const es = pack()?.id === 'es';
+    return s.cat === 'gender' ? `describing words in the right gender (${es ? 'cansado → cansada' : 'stanco → stanca'})` : `describing words in the right number (${es ? 'nuevo → nuevos' : 'nuovo → nuovi'})`;
+  }
   if (s.kind === 'order') return `where ${ORDER_NAMES[s.cat] || 'words'} go in the sentence`;
   const w = state.words[s.id];
   return w ? `“${w.text}”${w.gloss ? ` (${w.gloss.split(' / ')[0]})` : ''}` : 'a word';
@@ -57,6 +68,7 @@ export function slipText(s) {
 /** Does a challenge exercise this weak spot? */
 export function slipMatches(s, target, words) {
   if (s.kind === 'word') return target.some((c) => c.wordId === s.id);
+  if (s.kind === 'agree') return target.some((c) => words[c.wordId]?.agr && c.agree && !c.agree.own);
   if (s.kind === 'order') {
     const cat = ORDER_CATS[s.cat] || s.cat;
     return target.length >= 4 && target.some((c) => (s.cat === 'neg' ? /^(non|no|not)$/i.test(c.text) : words[c.wordId]?.cat === cat || (cat === 'action' && words[c.wordId]?.forms)));

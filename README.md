@@ -67,6 +67,20 @@ Italian and Spanish each hold about 275 high-frequency words in 20 levels (11–
 
 Generated sentences only pair words that make sense together. Every noun has a kind (food, drink, reading, people, ideas, problems, goals…), and every verb lists the kinds it takes: you *mangi* food, *risolvi* problems, *cogli* opportunities, and *sapere* only takes skills (*so cucinare*). Places are matched too: every place has a scene (home, café, station, library, gym…), so generated sentences put tickets at the station and books at the library. Spinning variables by hand stays free.
 
+### Gender and agreement
+
+Describing words agree with what they describe. **Feelings** agree with their subject — *lei è stanca*, *loro sono contenti*, *ella está cansada* — and a new sector, **QUALITY** (*Prism Reach*), holds describing words that follow a noun and agree with it: *una casa nuova*, *le chiavi vecchie*, *los billetes caros*. Every noun knows its gender and number from its article (*la casa* → feminine, *i soldi* → plural; exceptions like *l'acqua* and *agua* are listed), and the star card shows it. Characters in Story mode are *he* or *she* (tap to switch), and for *I / you / we* you choose masculine or feminine in **Settings → Agreement**. Generated sentences only pair describing words with nouns they suit (hot coffee, not hot keys), English prompts put them first (“a new house”), and the Forge's word-order check knows they come right after the noun.
+
+In Practice the tile bank includes the wrong gender or number, and feedback explains it: “*stanco* is masculine singular, but it describes *lei* (feminine singular): *stanca*”. Agreement slips show up as weak spots with focused practice.
+
+### Speak it back
+
+After any Practice answer, and in the Forge, **Say it** listens while you say the sentence (the browser's speech recognition: Chrome, Edge, Safari, Android). Each word is marked heard or missed, with a score and what was heard. Where speech recognition isn't available the button says so.
+
+### Daily orbit
+
+A ring in the top bar (or `O`) opens today's five minutes: up to 5 reviews of fading stars, 3 translations, 1 listening, 1 spoken sentence and 1 story, each with a *Go* button (or *Start* to run them in order). Finished days glow on a five-week calendar in Logbook → Progress, alongside your orbit streak.
+
 ### Grammar that stays correct
 
 Swapping words only teaches if every sentence it produces is right, so the packs carry grammar:
@@ -87,7 +101,7 @@ There's also an English starter (80 words, revealed through their neighbours rat
 
 ### Keyboard
 
-`F` Forge · `R` surprise sentence · `T` write a story · `G` Galaxy · `E` Eclipse · `P` Practice · `D` Drift · `L` Logbook · `N` new word · `S` shuffle · `V` hear · `0` show everything · `Esc` close
+`F` Forge · `R` surprise sentence · `T` write a story · `G` Galaxy · `E` Eclipse · `P` Practice · `O` daily orbit · `D` Drift · `L` Logbook · `N` new word · `S` shuffle · `V` hear · `0` show everything · `Esc` close
 
 Drag to pan, scroll or pinch to zoom. Double-click a star to add it to your sentence; double-click empty space to dive in.
 
@@ -149,6 +163,9 @@ Without the script, any static server works (`python3 -m http.server 8000`) or G
 | `js/practice.js` | Translation challenges and review sessions |
 | `js/progress.js`, `js/charts.js` | Answer history, weak spots, and the Progress charts |
 | `js/pwa.js`, `sw.js`, `manifest.json`, `icons/` | Installable app and offline cache |
+| `js/packs/it-agree.js`, `js/packs/es-agree.js` | Gendered feelings, QUALITY words, noun-gender exceptions, agreement patterns |
+| `js/speakback.js` | Speech recognition and word-by-word comparison |
+| `js/daily.js` | Daily orbit: plan, ring, calendar, streak |
 | `js/order.js` | Word-order rules: checks any sentence, suggests the fix, explains each move |
 | `js/memory.js` | Spaced-review schedule, star dimming |
 | `js/english.js` | English renderings of generated sentences (person, tense, negation, modals, adverb order) |

@@ -34,6 +34,19 @@ const SCENES = {
   truth: 'home outdoor travel library', chance: 'work travel city', item: 'home work shop city station',
   errand: 'home shop city', trip: 'home work travel',
 };
+// Which kinds of thing each describing word suits (keyed by its English meaning).
+const QUALITY_FITS = {
+  new: 'item transport room read watch listen goal idea', old: 'item transport room read person place',
+  hot: 'food drink room', cold: 'food drink room', good: 'food drink idea read watch listen chance person',
+  expensive: 'item food drink ticket transport room trip', cheap: 'item food drink ticket transport room trip',
+  small: 'item room transport food', big: 'item room transport food issue goal',
+  beautiful: 'item room read watch listen trip place person', pretty: 'item room read watch listen trip place person',
+  red: 'item transport drink', Italian: 'food drink read watch listen person',
+  long: 'read watch listen trip lesson time', important: 'info idea decision issue goal lesson ticket person',
+  difficult: 'decision issue lesson lang goal truth',
+};
+const suits = (quality, thing) => !thing?.kind || (QUALITY_FITS[quality.gloss] || '').split(' ').includes(thing.kind);
+
 const fitsScene = (kind, place) => !kind || !place.scene || place.scene === 'any' || (SCENES[kind] || '').split(' ').includes(place.scene);
 
 /**
@@ -74,6 +87,12 @@ export function randomSentence({ who = null, tense = null, statementsOnly = fals
         const fit = opts.filter((id) => verb.obj.includes(W[id].kind));
         if (fit.length) opts = fit;
       }
+    }
+    if (slot === 'quality') {
+      // the describing word must suit the noun it follows (hot coffee, not hot keys)
+      const thing = W[tokens[tokens.length - 1]?.wordId];
+      const fit = opts.filter((id) => suits(W[id], thing));
+      if (fit.length) opts = fit;
     }
     if (slot === 'place' && place && opts.includes(place)) opts = [place];
     else if (slot === 'place') {

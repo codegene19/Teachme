@@ -11,6 +11,7 @@ export const CATEGORY_DEFS = [
   { id: 'place',   label: 'PLACE',     sector: 'Locus Expanse',   blurb: 'where it happens',          color: '#4fe3c1', angle: 46,  radius: 800, spread: 220 },
   { id: 'time',    label: 'TIME',      sector: 'Chrono Drift',    blurb: 'when it happens',           color: '#d4f16a', angle: 92,  radius: 780, spread: 220 },
   { id: 'feeling', label: 'FEELING',   sector: 'Aurora of Moods', blurb: 'how we feel',               color: '#ff8fd6', angle: 136, radius: 820, spread: 230 },
+  { id: 'quality', label: 'QUALITY',   sector: 'Prism Reach',     blurb: 'words that describe things', color: '#ffb36b', angle: 24, radius: 1180, spread: 190 },
   { id: 'core',    label: 'CORE',      sector: 'Inner Ring',      blurb: 'small helper words',        color: '#e9e3d3', angle: 205, radius: 400, spread: 120 },
   { id: 'link',    label: 'LINK',      sector: 'Bridge Core',     blurb: 'words that join sentences', color: '#ffa95e', angle: 0,   radius: 0,   spread: 170 },
 ];

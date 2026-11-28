@@ -4,7 +4,7 @@
 
 import {
   state, derived, on, commit, persist, bumpSeen, bumpStat, saveGalaxy, cosmicName,
-  emptyGalaxy, removePart, cloneTokens, addCharacter, characters, findWord,
+  emptyGalaxy, removePart, cloneTokens, addCharacter, characters, findWord, guessGender,
 } from './store.js';
 import {
   paragraphSegments, paragraphText, sentenceText, countParagraph, countTokens, formatBig, pickRandom, optionsFor,
@@ -14,6 +14,7 @@ import { chime, arpeggio, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
 import { glossed } from './forge.js';
 import { randomStory, canGenerate, characterStory } from './generate.js';
+import { recordStory } from './daily.js';
 
 const root = $('#galaxy');
 let paraEl, partsEl, countEl, countLabel, nameInput, addSel, saveBtn, editTag;
@@ -301,6 +302,7 @@ export function writeStory(length = 3) {
     return;
   }
   state.galaxyDraft = { parts: story.parts, joins: story.joins, name: cosmicName('galaxy'), editingId: null };
+  recordStory();
   bumpStat('made');
   bumpSeen(pathIds());
   commit();
@@ -328,10 +330,19 @@ export function storyMode() {
   const names = [...new Set([...known, ...(DEFAULT_CAST[state.pack] || DEFAULT_CAST.en)])];
   if (!story.cast) story.cast = new Set(names.slice(0, 2));
   const castRow = h('div', { class: 'cast-row', role: 'group', 'aria-label': 'Characters' });
-  const drawCast = () => fill(castRow, names.map((n) => h('button', {
-    class: `cast-chip${story.cast.has(n) ? ' on' : ''}`, 'aria-pressed': String(story.cast.has(n)),
-    onclick: () => { story.cast.has(n) ? story.cast.delete(n) : story.cast.add(n); drawCast(); },
-  }, n)));
+  // he / she for each character, so describing words agree ("Giulia è stanca")
+  story.genders ||= {};
+  const genderOf = (n) => story.genders[n] || characters().find((w) => w.text === n)?.gender || guessGender(n);
+  const agrees = state.pack === 'it' || state.pack === 'es';
+  const drawCast = () => fill(castRow, names.map((n) => h('span', { class: `cast-item${story.cast.has(n) ? ' on' : ''}` },
+    h('button', {
+      class: `cast-chip${story.cast.has(n) ? ' on' : ''}`, 'aria-pressed': String(story.cast.has(n)),
+      onclick: () => { story.cast.has(n) ? story.cast.delete(n) : story.cast.add(n); drawCast(); },
+    }, n),
+    agrees && story.cast.has(n) ? h('button', {
+      class: 'cast-gender', title: 'Switch he / she', 'aria-label': `${n} is ${genderOf(n) === 'f' ? 'she' : 'he'} — switch`,
+      onclick: () => { story.genders[n] = genderOf(n) === 'f' ? 'm' : 'f'; drawCast(); },
+    }, genderOf(n) === 'f' ? 'she' : 'he') : null)));
   drawCast();
   const nameIn = h('input', { class: 'text-input', placeholder: 'Add a character…', maxlength: 24, 'aria-label': 'New character name' });
   const addName = () => {
@@ -356,7 +367,7 @@ export function storyMode() {
   }, label)));
   const go = () => {
     if (nameIn.value.trim()) addName();
-    const cast = [...story.cast].map((n) => addCharacter(n)).filter(Boolean).map((w) => w.id);
+    const cast = [...story.cast].map((n) => addCharacter(n, genderOf(n))).filter(Boolean).map((w) => w.id);
     if (!cast.length) { toast({ kind: 'info', title: 'Choose a character', body: 'Pick at least one character for the story.' }); return; }
     const place = story.place && state.words[story.place]?.lit ? story.place : null;
     const st = characterStory({ cast, place, timeline: story.timeline, length: story.length });
@@ -367,6 +378,7 @@ export function storyMode() {
     state.galaxyDraft = { parts: st.parts, joins: st.joins, name: title.slice(0, 40), editingId: null };
     bumpStat('made');
     bumpStat('stories');
+    recordStory();
     bumpSeen(pathIds());
     commit();
     if (!isOpen()) open();

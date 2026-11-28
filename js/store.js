@@ -69,7 +69,7 @@ const edgeCache = new Map();
 function edgesFor(pack) {
   if (!pack) return [];
   if (edgeCache.has(pack.id)) return edgeCache.get(pack.id);
-  const resolve = buildLookup(pack.words.map((w) => ({ id: packWordId(pack.id, w.t), text: w.t, forms: w.f, num: w.n, tenses: w.ft })));
+  const resolve = buildLookup(pack.words.map((w) => ({ id: packWordId(pack.id, w.t), text: w.t, forms: w.f, num: w.n || w.g4, tenses: w.ft })));
   const edges = [];
   for (const s of pack.examples || []) {
     const { tokens } = parseInput(s, resolve);
@@ -110,7 +110,7 @@ function freshState(packId) {
     categories, words: {}, constellations: {}, galaxies: {},
     missions: {}, hints: {}, sighted: {},
     stats: { swaps: 0, spoken: 0, shuffles: 0, ignited: 0, drifts: 0, eclipses: 0, streak: 0, bestStreak: 0, made: 0 },
-    settings: { sound: true, speakOnIgnite: true, gloss: true, voiceURI: '', rate: 0.9, lang: p?.voice || '', voiceEngine: 'device', piperVoices: {} },
+    settings: { sound: true, speakOnIgnite: true, gloss: true, voiceURI: '', rate: 0.9, lang: p?.voice || '', voiceEngine: 'device', piperVoices: {}, selfGender: 'm' },
     forge: emptyForge(), galaxyDraft: emptyGalaxy(), nextOrder: 0,
   };
   if (p) addPackWords(s, p);
@@ -126,6 +126,7 @@ function addPackWords(s, p) {
       forms: pw.f || null, tenses: pw.ft || null, tense: pw.tense || null, num: pw.n || null, person: pw.p ?? null,
       also: pw.also || null, comma: !!pw.comma, joinComma: !!pw.joinComma, gal: p.levels ? galaxyIndex(pw.cefr) : 0,
       kind: pw.k || null, obj: pw.o || null, acts: pw.acts || null, scene: pw.sc || null,
+      agr: pw.g4 || null, gender: pw.g || null, plural: !!pw.pl,
     };
     const ex = s.words[id];
     if (ex) {
@@ -265,7 +266,7 @@ function rebuild() {
 }
 
 function applyGrammar() {
-  setGrammar({ invert: !!pack()?.invert });
+  setGrammar({ invert: !!pack()?.invert, selfGender: state?.settings?.selfGender === 'f' ? 'f' : 'm' });
 }
 
 // -------------------------------------------------------------- persistence
@@ -282,6 +283,7 @@ export function persist() {
   saveTimer = setTimeout(saveNow, 250);
 }
 export function commit() {
+  applyGrammar();
   rebuild();
   persist();
   emit('change');
@@ -592,14 +594,18 @@ export { cloneTokens, emptyForge, emptyGalaxy };
  * A story character ("Marco", "Lucía"): a star in the WHO sector that
  * conjugates like he/she, so the generators can make it the subject.
  */
-export function addCharacter(name) {
+export function addCharacter(name, gender = null) {
   const clean = cleanWordText(name).slice(0, 24);
   if (!clean) return null;
   const existing = findWord(clean);
-  if (existing) return existing.cat === 'who' ? existing : null;
+  if (existing) {
+    if (existing.cat !== 'who') return null;
+    if (existing.character && gender) existing.gender = gender;
+    return existing;
+  }
   const text = cap(clean);
   const w = {
-    id: uid('ch:'), text, cat: 'who', person: 2, gloss: '', lit: true, litAt: Date.now(),
+    id: uid('ch:'), text, cat: 'who', person: 2, gloss: '', gender: gender || guessGender(text), lit: true, litAt: Date.now(),
     seen: 0, note: '', seed: false, character: true, lvl: 0, gal: 0, order: state.nextOrder++,
   };
   state.words[w.id] = w;
@@ -609,5 +615,8 @@ export function addCharacter(name) {
   emit('ignite', { id: w.id, newSector: false, quiet: true, created: true });
   return w;
 }
+
+/** Names ending in -a are usually feminine in Italian and Spanish (Giulia, Lucía); you can change it. */
+export const guessGender = (name) => (/a$/i.test(String(name).trim()) && !/^(luca|andrea|nicola|mattia|elia|tobia)$/i.test(String(name).trim()) ? 'f' : 'm');
 
 export const characters = () => derived.list.filter((w) => w.character);

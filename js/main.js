@@ -17,6 +17,7 @@ import { initDrift } from './drift.js';
 import { initEclipse } from './eclipse.js';
 import { initPractice } from './practice.js';
 import { initPwa } from './pwa.js';
+import { initDaily } from './daily.js';
 import { dueIds } from './memory.js';
 import { checkMissions, pendingMissions, doneCount, MISSIONS } from './missions.js';
 import { runGenesis } from './genesis.js';
@@ -53,6 +54,7 @@ initDrift();
 initEclipse();
 initPractice();
 initPwa();
+initDaily();
 
 function igniteFromMap(id) {
   unlockAudio();
@@ -432,6 +434,7 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'g' && unlocked('galaxy')) app.galaxy.toggle();
   else if (k === 'e' && unlocked('eclipse')) app.eclipse.start();
   else if (k === 'p' && unlocked('practice')) app.practice.open();
+  else if (k === 'o' && app.practice.available()) app.daily.open();
   else if (k === 'd' && unlocked('drift')) app.drift.start();
   else if (k === 'l') app.log.toggle();
   else if (k === 'n') app.panels.addWordDialog();

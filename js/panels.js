@@ -2,7 +2,7 @@
 
 import {
   state, derived, on, updateWord, deleteWord, addWord, addCategory, setSetting,
-  resetUniverse, exportUniverse, importUniverse, findWord, pack,
+  resetUniverse, exportUniverse, importUniverse, findWord, pack, commit,
 } from './store.js';
 import { PACKS, PACK_ORDER } from './packs/index.js';
 import { GALAXIES } from './seed.js';
@@ -236,7 +236,10 @@ function renderCard() {
       w.lvl ? h('span', { class: 'lvl-badge' }, `${GALAXIES[w.gal || 0].id} · level ${w.lvl}`) : null) : null,
     w.tense ? h('p', { class: 'tense-note' }, `Puts its clause in the ${pack()?.tenseNames?.[w.tense] || w.tense}.`) : null,
     w.forms ? conjugation(w) : null,
-    w.num && w.num[0] !== w.num[1] ? h('div', { class: 'forms-row' },
+    w.agr ? h('div', { class: 'forms-row agr-row' },
+      ...[['m', 0], ['f', 1], ['m pl', 2], ['f pl', 3]].map(([l, k]) => h('span', {}, h('small', {}, l), ' ', w.agr[k]))) : null,
+    w.cat === 'thing' && w.gender ? h('p', { class: 'tense-note' }, `${w.gender === 'f' ? 'Feminine' : 'Masculine'}${w.plural ? ' plural' : ''} noun — describing words after it take the ${w.gender === 'f' ? 'feminine' : 'masculine'}${w.plural ? ' plural' : ''} form.`) : null,
+    !w.agr && w.num && w.num[0] !== w.num[1] ? h('div', { class: 'forms-row' },
       h('span', {}, h('small', {}, 'one'), ' ', w.num[0]), h('span', {}, h('small', {}, 'many'), ' ', w.num[1])) : null,
     h('div', { class: 'mastery', title: m.next ? `${m.next - w.seen} more encounters to the next tier` : 'Fully mastered' },
       h('span', { class: 'mastery-name' }, `✦ ${m.name}`),
@@ -433,6 +436,24 @@ function toggle(label, desc, value, onChange) {
   return h('label', { class: 'toggle' }, input, h('span', { class: 'switch' }), h('span', { class: 'toggle-text' }, h('b', {}, label), desc && h('small', {}, desc)));
 }
 
+/** Which form describing words take when the subject is you (io, tu, noi / yo, tú, usted). */
+function genderSection() {
+  const p = pack();
+  if (!p || p.id === 'en') return null;
+  const ex = p.id === 'es' ? ['cansado', 'cansada'] : ['stanco', 'stanca'];
+  const me = p.id === 'es' ? 'Yo estoy' : 'Io sono';
+  const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Your grammatical gender' });
+  const draw = () => fill(seg, [['m', `Masculine — ${me} ${ex[0]}`], ['f', `Feminine — ${me} ${ex[1]}`]].map(([v, label]) => {
+    const on = (state.settings.selfGender || 'm') === v;
+    return h('button', { class: `tense-tab${on ? ' active' : ''}`, role: 'radio', 'aria-checked': String(on), onclick: () => { setSetting('selfGender', v); commit(); draw(); } }, label);
+  }));
+  draw();
+  return h('section', { class: 'set-group', id: 'set-gender', style: { '--c': 'var(--accent)' } },
+    h('h3', {}, 'Agreement'),
+    h('p', { class: 'lede' }, 'Describing words agree with who they describe. For “I”, “you” and “we”, which form should sentences use?'),
+    seg);
+}
+
 /** Install as an app + offline status. Updates itself when the browser's install prompt arrives. */
 function appSection() {
   const body = h('div', { class: 'stack tight' });
@@ -506,6 +527,7 @@ export function settings(section) {
       h('section', { class: 'set-group' },
         h('h3', {}, 'Reading'),
         toggle('Show English meanings', 'A small translation under each word in your sentences and on the map.', state.settings.gloss, (v) => { setSetting('gloss', v); app.forge?.render?.(); })),
+      genderSection(),
       h('section', { class: 'set-group', id: 'set-voice' },
         h('h3', {}, 'Voice'),
         speechSupported()

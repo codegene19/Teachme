@@ -22,6 +22,7 @@ function rank(t, words) {
   if (w.forms) return t.inf ? 5 : 3;
   const slot = slotOf(t, words);
   if (slot === 'thing' || slot === 'feeling' || w.cat === 'thing' || w.cat === 'feeling') return 6;
+  if (slot === 'quality' || w.cat === 'quality') return 6.5;
   if (slot === 'place' || w.cat === 'place') return 7;
   return null; // time, freq and anything else: free
 }
@@ -136,6 +137,7 @@ export function orderRule(seq, j, words) {
     return { cat: 'verb', text: prev && words[prev.wordId]?.cat === 'who' ? `The verb follows its subject: ${q(prev, c)}.` : `The verb goes here: ${q(prev, c, next)}.` };
   }
   if (w.cat === 'thing') return { cat: 'thing', text: `“${c.text}” is what the action is done to — it comes after the verb: ${q(prev, c)}.` };
+  if (w.cat === 'quality') return { cat: 'quality', text: `Describing words come right after the noun: ${q(prev, c)}.` };
   if (w.cat === 'place') return { cat: 'place', text: `Places come after the action and its object: ${q(prev, c)}.` };
   if (w.cat === 'feeling') return { cat: 'feeling', text: `Descriptions come after the verb: ${q(prev, c)}.` };
   return { cat: w.cat, text: j === 0 ? `“${c.text}” starts the sentence.` : `“${c.text}” comes after “${prev.text}”.` };

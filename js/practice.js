@@ -17,6 +17,7 @@ import { app, h, fill, icon, openModal, closeModal } from './ui.js';
 import { speak, unlockAudio, arpeggio, errorSound } from './sfx.js';
 import { speechOpts } from './panels.js';
 import { glossed } from './forge.js';
+import { speakBack } from './speakback.js';
 
 export function initPractice() {
   app.practice = { open, available, dueCount: () => dueIds().length, target: () => session?.item?.target?.map((c) => c.text) };
@@ -32,13 +33,24 @@ const tenseName = (t) => pack()?.tenseNames?.[t] || { pres: 'present', past: 'pa
 function tilesFor(s) {
   return sentenceSegments(s.tokens, W(), { capitalize: false, end: s.end })
     .filter((x) => x.kind === 'word')
-    .map((x) => ({ text: x.text, wordId: x.wordId, person: x.person, tense: x.tense, index: x.index }));
+    .map((x) => {
+      const w = W()[x.wordId];
+      // describing "io / tu / noi" works in either gender, so both forms are right
+      const alts = w.agr && x.agree?.own ? [w.agr[x.agree.pl ? 2 : 0], w.agr[x.agree.pl ? 3 : 1]] : null;
+      return { text: x.text, wordId: x.wordId, person: x.person, tense: x.tense, index: x.index, agree: x.agree || null, alts };
+    });
 }
+
+const agrIdx = (a) => (a.pl ? 2 : 0) + (a.g === 'f' ? 1 : 0);
+// "feminine plural", or just "plural" for words that only change number (importante → importanti)
+const agreeName = (a, w = null) => (w?.agr && w.agr[0] === w.agr[1] && w.agr[2] === w.agr[3]
+  ? (a.pl ? 'plural' : 'singular')
+  : `${a.g === 'f' ? 'feminine' : 'masculine'} ${a.pl ? 'plural' : 'singular'}`);
 
 /** Wrong-but-tempting tiles: the same verb in another person or tense, a neighbouring word. */
 function distractors(s, target) {
   const words = W();
-  const used = new Set(target.map((c) => c.text.toLowerCase()));
+  const used = new Set(target.flatMap((c) => [c.text, ...(c.alts || [])]).map((x) => x.toLowerCase()));
   const out = [];
   const add = (c) => { const k = c.text.toLowerCase(); if (c.text && !used.has(k)) { used.add(k); out.push(c); } };
   const verbs = target.filter((c) => words[c.wordId].forms && !s.tokens[c.index].inf);
@@ -54,11 +66,22 @@ function distractors(s, target) {
     const tense = ['pres', 'imp', 'past', 'fut'].find((t) => surface(w, tok, o.person, t) === text) || o.tense;
     add({ text, wordId: w.id, person: o.person, tense });
   }
-  const other = shuffle(target.filter((c) => ['thing', 'feeling', 'place', 'time'].includes(words[c.wordId].cat)))[0];
+  // a describing word in the wrong gender or number ("stanco" for "lei", "nuovo" for "una casa")
+  const agreeing = shuffle(target.filter((c) => words[c.wordId].agr && c.agree))[0];
+  if (agreeing) {
+    const w = words[agreeing.wordId];
+    const a = agreeing.agree;
+    const wrong = a.own ? [{ g: a.g, pl: !a.pl }] : [{ g: a.g === 'f' ? 'm' : 'f', pl: a.pl }, { g: a.g === 'f' ? 'm' : 'f', pl: a.pl }, { g: a.g, pl: !a.pl }];
+    for (const o of shuffle(wrong)) {
+      const text = w.agr[agrIdx(o)];
+      if (text && !used.has(text.toLowerCase())) { add({ text, wordId: w.id, person: agreeing.person, tense: agreeing.tense, agree: { ...a, ...o } }); break; }
+    }
+  }
+  const other = shuffle(target.filter((c) => ['thing', 'feeling', 'place', 'time', 'quality'].includes(words[c.wordId].cat)))[0];
   if (other) {
     const tok = s.tokens[other.index];
     const alt = pickRandom(optionsFor(tok, words, derived.orbit).filter((id) => id !== other.wordId));
-    if (alt) add({ text: surface(words[alt], tok, other.person, other.tense), wordId: alt, person: other.person, tense: other.tense });
+    if (alt) add({ text: surface(words[alt], tok, other.person, other.tense, other.agree), wordId: alt, person: other.person, tense: other.tense, agree: other.agree });
   }
   return out.slice(0, 3);
 }
@@ -223,7 +246,10 @@ function check(status, checkBtn, nextBtn, drawTiles) {
   session.checked = true;
   session.sel = null;
   const norm = (x) => x.toLowerCase();
-  const ans = session.answer;
+  const ans = session.answer.map((c) => {
+    const t = it.target.find((x) => x.wordId === c.wordId && x.alts?.some((y) => norm(y) === norm(c.text)));
+    return t ? { ...c, text: t.text, agree: t.agree } : c;
+  });
   const same = (a, b) => a.length === b.length && a.every((c, i) => norm(c.text) === norm(b[i].text));
   const exactOrder = same(ans, it.target);
   const sorted0 = (a) => a.map((c) => norm(c.text)).sort().join('|');
@@ -300,6 +326,20 @@ function check(status, checkBtn, nextBtn, drawTiles) {
       if (!a) continue;
       missing.splice(missing.indexOf(t), 1);
       wrongIds.add(t.wordId);
+      const aw = W()[t.wordId];
+      const agrees = aw?.agr && a.agree && t.agree && (a.agree.g !== t.agree.g || a.agree.pl !== t.agree.pl);
+      if (agrees) {
+        // name the wrong form by what it is, and the right one by what it describes
+        const k = aw.agr.findIndex((x) => norm(x) === norm(a.text));
+        const was = k >= 0 ? { g: k % 2 ? 'f' : 'm', pl: k >= 2 } : a.agree;
+        const what = t.agree.with >= 0 ? tgt.find((x) => x.index === t.agree.with)?.text : null;
+        const noun = { ...t.agree };
+        recordSlip({ kind: 'agree', cat: was.pl !== noun.pl ? 'number' : 'gender' });
+        reasons.push(what
+          ? `“${a.text}” is ${agreeName(was, aw)}, but it describes “${what}” (${agreeName(noun, aw.agr[0] === aw.agr[1] ? aw : null)}): “${t.text}”.`
+          : `Use the ${agreeName(noun, aw)} form here: “${t.text}”.`);
+        continue;
+      }
       if (a.person !== t.person) recordSlip({ kind: 'person', from: a.person, to: t.person });
       else if (a.tense !== t.tense) recordSlip({ kind: 'tense', from: a.tense, to: t.tense });
       if (a.person !== t.person) reasons.push(`“${a.text}” goes with “${personName(a.person)}” — here the subject is “${personName(t.person)}”: “${t.text}”.`);
@@ -347,7 +387,9 @@ function showAnswer(status, it, ok, verdict = ok ? '✦ Correct' : 'Not quite', 
     h('p', { class: `verdict ${ok ? 'right' : 'wrong'}` }, verdict),
     reasons.length ? h('ul', { class: 'reasons' }, reasons.map((r) => h('li', {}, r))) : null,
     h('p', { class: 'sentence answer-sentence' }, ...segs.flatMap((x) => [x.sep, x.kind === 'punct' ? x.text : glossed(x.text, x.gloss, { class: 'w' })]), h('span', { class: 'end' }, it.s.end)),
-    h('button', { class: 'btn small ghost', onclick: () => speak(text, speechOpts()) }, icon('speak', 16), 'Hear it'));
+    h('div', { class: 'row wrap answer-tools' },
+      h('button', { class: 'btn small ghost', onclick: () => speak(text, speechOpts()) }, icon('speak', 16), 'Hear it'),
+      speakBack(text, { compact: true, onDone: () => { session.spoken = (session.spoken || 0) + 1; commit(); } })));
   speak(text, speechOpts());
 }
 

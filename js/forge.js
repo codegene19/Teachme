@@ -7,7 +7,7 @@ import {
 } from './store.js';
 import {
   sentenceSegments, sentenceText, countTokens, formatBig, parseInput, formulaParts, pickRandom, optionsFor,
-  personAt, surface, slotOf, clauseTenses,
+  personAt, surface, slotOf, clauseTenses, agreeAt,
 } from './language.js';
 import { randomSentence, canGenerate } from './generate.js';
 import { app, h, fill, $, icon, toast, showPopover, hidePopover, isPopoverOpen } from './ui.js';
@@ -15,9 +15,10 @@ import { chime, arpeggio, speak, unlockAudio, errorSound } from './sfx.js';
 import { speechOpts } from './panels.js';
 import { checkOrder, orderRule } from './order.js';
 import { recordSlip } from './progress.js';
+import { speakBack, canListen } from './speakback.js';
 
 const root = $('#forge');
-let chipsEl, sentenceEl, mathEl, countEl, countLabel, nameInput, textInput, endEls, saveBtn, editTag, hintEl, orderEl;
+let sayEl, chipsEl, sentenceEl, mathEl, countEl, countLabel, nameInput, textInput, endEls, saveBtn, editTag, hintEl, orderEl;
 const keptOrders = new Set(); // sentences whose order you chose to keep
 let popIndex = -1;
 let wheelAcc = 0;
@@ -30,7 +31,7 @@ const surfaceAt = (i, id) => {
   const toks = F().tokens;
   const t = id ? { ...toks[i], wordId: id } : toks[i];
   const probe = id ? toks.map((x, k) => (k === i ? t : x)) : toks;
-  return surface(state.words[t.wordId], t, personAt(probe, state.words, i), clauseTenses(probe, state.words)[i]);
+  return surface(state.words[t.wordId], t, personAt(probe, state.words, i), clauseTenses(probe, state.words)[i], agreeAt(probe, state.words, i));
 };
 
 /** A word in the sentence, with its English gloss underneath when enabled. */
@@ -52,6 +53,7 @@ export function initForge() {
   mathEl = h('div', { class: 'math' });
   hintEl = h('div', { class: 'forge-hint' });
   orderEl = h('div', { class: 'order-check', hidden: true, 'aria-live': 'polite' });
+  sayEl = h('div', { class: 'forge-say', hidden: true });
   textInput = h('input', {
     class: 'text-input', placeholder: 'Type words or a whole sentence…', 'aria-label': 'Add words', autocomplete: 'off', spellcheck: 'false',
     onkeydown: (e) => {
@@ -68,6 +70,7 @@ export function initForge() {
       h('button', { class: 'icon-btn', 'aria-label': 'Close forge', onclick: close }, icon('close'))),
     chipsEl,
     sentenceEl,
+    sayEl,
     mathEl,
     orderEl,
     hintEl,
@@ -76,6 +79,7 @@ export function initForge() {
     h('div', { class: 'sheet-actions' },
       h('button', { class: 'btn', onclick: shuffle, title: 'Shuffle variables (S)' }, icon('shuffle', 16), h('span', {}, 'Shuffle')),
       h('button', { class: 'btn', onclick: speakNow, title: 'Hear it (V)' }, icon('speak', 16), h('span', {}, 'Hear')),
+      h('button', { class: 'btn', onclick: sayIt, title: canListen() ? 'Say it aloud and check your pronunciation' : 'Speaking practice needs Chrome, Edge or Safari' }, icon('mic', 16), h('span', {}, 'Say it')),
       h('button', { class: 'btn accent-btn', onclick: surprise, title: 'A new sentence from your patterns (R)' }, icon('spark', 16), h('span', {}, 'Surprise me')),
       h('div', { class: 'end-group', role: 'group', 'aria-label': 'End mark' }, endEls),
       h('span', { class: 'grow' }),
@@ -155,6 +159,7 @@ function render() {
     fill(mathEl, f.tokens.length ? h('span', { class: 'dim' }, 'One fixed sentence. Tap a word and make it a variable to multiply it.') : '');
   }
   renderOrder();
+  if (!sayEl.hidden && sayFor !== sentenceText(f.tokens, state.words, f.end)) { sayEl.hidden = true; fill(sayEl); }
   renderHint();
   app.space.setPath(f.tokens.map((t) => t.wordId));
 }
@@ -443,6 +448,19 @@ export function shuffle() {
   sentenceEl.classList.remove('warp');
   void sentenceEl.offsetWidth;
   sentenceEl.classList.add('warp');
+}
+
+/** Speak it back: say the sentence, see which words came through. */
+let sayFor = '';
+function sayIt() {
+  const f = F();
+  if (!f.tokens.length) return;
+  const text = sentenceText(f.tokens, state.words, f.end);
+  sayFor = text;
+  const ctl = speakBack(text, { onDone: ({ score }) => { if (score >= 0.75) { bumpSeen(f.tokens.map((t) => t.wordId)); commit(); } } });
+  fill(sayEl, ctl, h('button', { class: 'icon-btn small', 'aria-label': 'Close', onclick: () => { sayEl.hidden = true; fill(sayEl); } }, icon('close', 14)));
+  sayEl.hidden = false;
+  ctl.querySelector('.sb-btn')?.click();
 }
 
 function speakNow() {
