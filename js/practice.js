@@ -9,7 +9,7 @@
 import { state, derived, bumpSeen, bumpStat, commit, pack } from './store.js';
 import { sentenceSegments, sentenceText, surface, optionsFor, pickRandom } from './language.js';
 import { randomSentence, canGenerate } from './generate.js';
-import { englishFor, cleanGloss } from './english.js';
+import { englishFor, cleanGloss, englishNoun } from './english.js';
 import { grade, dueIds, dueLabel } from './memory.js';
 import { orderRule, keptInOrder, checkOrder } from './order.js';
 import { recordAnswer, recordSlip, slipMatches, slipText } from './progress.js';
@@ -37,7 +37,7 @@ function tilesFor(s) {
       const w = W()[x.wordId];
       // describing "io / tu / noi" works in either gender, so both forms are right
       const alts = w.agr && x.agree?.own ? [w.agr[x.agree.pl ? 2 : 0], w.agr[x.agree.pl ? 3 : 1]] : null;
-      return { text: x.text, wordId: x.wordId, person: x.person, tense: x.tense, index: x.index, agree: x.agree || null, alts };
+      return { text: x.text, wordId: x.wordId, person: x.person, tense: x.tense, index: x.index, agree: x.agree || null, noun: x.noun || null, alts };
     });
 }
 
@@ -65,6 +65,16 @@ function distractors(s, target) {
     // name the form by what it really is (some verbs use the imperfect for the past)
     const tense = ['pres', 'imp', 'past', 'fut'].find((t) => surface(w, tok, o.person, t) === text) || o.tense;
     add({ text, wordId: w.id, person: o.person, tense });
+  }
+  // a noun in the other number ("i libri" for "il libro") or with the other article
+  const noun = shuffle(target.filter((c) => words[c.wordId].nouns && c.noun))[0];
+  if (noun) {
+    const w = words[noun.wordId];
+    const flips = [{ det: noun.noun.det, pl: !noun.noun.pl }, { det: noun.noun.det === 'def' ? 'indef' : 'def', pl: noun.noun.pl }];
+    for (const o of Math.random() < 0.7 ? flips : flips.reverse()) {
+      const text = w.nouns[o.det][o.pl ? 1 : 0];
+      if (!used.has(text.toLowerCase())) { add({ text, wordId: w.id, person: noun.person, tense: noun.tense, noun: o }); break; }
+    }
   }
   // a describing word in the wrong gender or number ("stanco" for "lei", "nuovo" for "una casa")
   const agreeing = shuffle(target.filter((c) => words[c.wordId].agr && c.agree))[0];
@@ -338,6 +348,19 @@ function check(status, checkBtn, nextBtn, drawTiles) {
         reasons.push(what
           ? `“${a.text}” is ${agreeName(was, aw)}, but it describes “${what}” (${agreeName(noun, aw.agr[0] === aw.agr[1] ? aw : null)}): “${t.text}”.`
           : `Use the ${agreeName(noun, aw)} form here: “${t.text}”.`);
+        continue;
+      }
+      const nw = W()[t.wordId];
+      if (nw?.nouns && a.noun && t.noun && (a.noun.pl !== t.noun.pl || a.noun.det !== t.noun.det)) {
+        const en = englishNoun(nw, cleanGloss(nw.gloss || nw.text), { num: t.noun.pl ? 'pl' : 'sg', det: t.noun.det });
+        if (a.noun.pl !== t.noun.pl) {
+          recordSlip({ kind: 'noun', cat: 'number' });
+          reasons.push(`“${a.text}” is ${a.noun.pl ? 'plural' : 'singular'}, but the English says “${en}”: “${t.text}”.`);
+        } else {
+          const aen = englishNoun(nw, cleanGloss(nw.gloss || nw.text), { num: a.noun.pl ? 'pl' : 'sg', det: a.noun.det });
+          recordSlip({ kind: 'noun', cat: 'article' });
+          reasons.push(`“${a.text}” means “${aen}”; here it's “${en}”: “${t.text}”.`);
+        }
         continue;
       }
       if (a.person !== t.person) recordSlip({ kind: 'person', from: a.person, to: t.person });

@@ -11,6 +11,10 @@ import itExtra from './it-extra.js';
 import esExtra from './es-extra.js';
 import itAgree from './it-agree.js';
 import esAgree from './es-agree.js';
+import itNouns from './it-nouns.js';
+import esNouns from './es-nouns.js';
+
+const NOUNS = { it: itNouns, es: esNouns };
 
 /** Fold extra words into each level and extend the meaning rules. */
 function withExtra(pack, extra, agree = null) {
@@ -47,6 +51,35 @@ function agreement(pack, w) {
   return {};
 }
 
+// Articles by rule. Italian looks at how the noun starts: lo / gli / uno / degli
+// before s + consonant, z, gn, ps, x, y; l' / gli / un' before a vowel.
+const IT_SPECIAL = /^(s[^aeiouàèéìòù]|z|gn|ps|x|y|pn)/i;
+const IT_VOWEL = /^[aeiouàèéìòùh]/i;
+export function article(lang, g, pl, det, noun) {
+  if (lang === 'es') {
+    if (det === 'def') return `${g === 'f' ? (pl ? 'las' : 'la') : (pl ? 'los' : 'el')} ${noun}`;
+    return `${g === 'f' ? (pl ? 'unas' : 'una') : (pl ? 'unos' : 'un')} ${noun}`;
+  }
+  const v = IT_VOWEL.test(noun), sp = IT_SPECIAL.test(noun);
+  if (det === 'def') {
+    if (g === 'f') return pl ? `le ${noun}` : (v ? `l'${noun}` : `la ${noun}`);
+    return pl ? `${v || sp ? 'gli' : 'i'} ${noun}` : (v ? `l'${noun}` : `${sp ? 'lo' : 'il'} ${noun}`);
+  }
+  if (g === 'f') return pl ? `delle ${noun}` : (v ? `un'${noun}` : `una ${noun}`);
+  return pl ? `${v || sp ? 'degli' : 'dei'} ${noun}` : `${sp ? 'uno' : 'un'} ${noun}`;
+}
+
+/** The four forms of a countable noun: { def: [one, many], indef: [one, many] }, and which one its text is. */
+function nounForms(pack, w, g) {
+  const entry = NOUNS[pack.id]?.[w.t];
+  if (!entry || !g) return {};
+  const [sg, pl] = entry;
+  const nf = { def: [article(pack.id, g, false, 'def', sg), article(pack.id, g, true, 'def', pl)], indef: [article(pack.id, g, false, 'indef', sg), article(pack.id, g, true, 'indef', pl)] };
+  const own = ['def', 'indef'].flatMap((d) => [0, 1].map((k) => ({ d, k }))).find(({ d, k }) => nf[d][k] === w.t);
+  if (!own) { console.warn(`noun forms don't reproduce "${w.t}"`, nf); return {}; }
+  return { nf, d0: own.d };
+}
+
 function prepare(pack) {
   if (!pack.levels) return { ...pack, words: pack.words.map((w) => ({ ...w, l: 0 })) };
   const sem = pack.semantics || { kinds: {}, objects: {} };
@@ -57,7 +90,7 @@ function prepare(pack) {
     ...(sem.modalActs?.[w.t] ? { acts: sem.modalActs[w.t].split(' ') } : {}),
     ...(sem.places?.[w.t] ? { sc: sem.places[w.t] } : {}),
     ...agreement(pack, w),
-  })));
+  })).map((w) => (w.c === 'thing' ? { ...w, ...nounForms(pack, w, w.g) } : w)));
   const blueprints = pack.levels.flatMap((L, i) => (L.patterns || []).map((p) => ({ ...p, l: i + 1 })));
   const genesis = pack.levels[0].words.filter((w) => w.c !== 'core').map((w) => w.t);
   return { ...pack, words, blueprints, genesis };

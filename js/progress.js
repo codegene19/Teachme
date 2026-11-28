@@ -15,11 +15,11 @@ function hist() {
 export const personName = (p) => (pack()?.persons?.[p] || ['I', 'you', 'he/she', 'we', 'you all', 'they'][p] || '').split(' / ')[0];
 export const tenseName = (t) => pack()?.tenseNames?.[t] || { pres: 'present', past: 'past', imp: 'imperfect', fut: 'future' }[t] || t;
 
-const slipKey = (s) => (s.kind === 'word' ? `word:${s.id}` : (s.kind === 'order' || s.kind === 'agree') ? `${s.kind}:${s.cat}` : `${s.kind}:${s.from}>${s.to}`);
+const slipKey = (s) => (s.kind === 'word' ? `word:${s.id}` : (s.kind === 'order' || s.kind === 'agree' || s.kind === 'noun') ? `${s.kind}:${s.cat}` : `${s.kind}:${s.from}>${s.to}`);
 function parseKey(k) {
   const [kind, rest] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
   if (kind === 'word') return { kind, id: rest };
-  if (kind === 'order' || kind === 'agree') return { kind, cat: rest };
+  if (kind === 'order' || kind === 'agree' || kind === 'noun') return { kind, cat: rest };
   const [from, to] = rest.split('>');
   return kind === 'person' ? { kind, from: +from, to: +to } : { kind, from, to };
 }
@@ -56,6 +56,10 @@ const ORDER_CATS = { neg: 'core', inf: 'action', verb: 'action' };
 export function slipText(s) {
   if (s.kind === 'person') return `“${personName(s.from)}” form where “${personName(s.to)}” is needed`;
   if (s.kind === 'tense') return `${tenseName(s.from)} instead of ${tenseName(s.to)}`;
+  if (s.kind === 'noun') {
+    const es = pack()?.id === 'es';
+    return s.cat === 'number' ? `singular and plural nouns (${es ? 'el libro → los libros' : 'il libro → i libri'})` : `“the” and “a” (${es ? 'el libro / un libro' : 'il libro / un libro'})`;
+  }
   if (s.kind === 'agree') {
     const es = pack()?.id === 'es';
     return s.cat === 'gender' ? `describing words in the right gender (${es ? 'cansado → cansada' : 'stanco → stanca'})` : `describing words in the right number (${es ? 'nuevo → nuevos' : 'nuovo → nuovi'})`;
@@ -68,6 +72,7 @@ export function slipText(s) {
 /** Does a challenge exercise this weak spot? */
 export function slipMatches(s, target, words) {
   if (s.kind === 'word') return target.some((c) => c.wordId === s.id);
+  if (s.kind === 'noun') return target.some((c) => words[c.wordId]?.nouns && c.noun && (s.cat === 'article' || c.noun.pl));
   if (s.kind === 'agree') return target.some((c) => words[c.wordId]?.agr && c.agree && !c.agree.own);
   if (s.kind === 'order') {
     const cat = ORDER_CATS[s.cat] || s.cat;

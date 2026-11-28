@@ -13,11 +13,12 @@ import { app, h, fill, $, icon, toast, showPopover, hidePopover, openModal, clos
 import { chime, arpeggio, speak, unlockAudio } from './sfx.js';
 import { speechOpts } from './panels.js';
 import { glossed } from './forge.js';
-import { randomStory, canGenerate, characterStory } from './generate.js';
+import { randomStory, canGenerate, characterStory, storySentence, storyChoices, storyJoin } from './generate.js';
+import { englishFor } from './english.js';
 import { recordStory } from './daily.js';
 
 const root = $('#galaxy');
-let paraEl, partsEl, countEl, countLabel, nameInput, addSel, saveBtn, editTag;
+let branchEl, paraEl, partsEl, countEl, countLabel, nameInput, addSel, saveBtn, editTag;
 
 const G = () => state.galaxyDraft;
 const linkOptions = () => [null, ...(derived.orbit.link || [])];
@@ -40,6 +41,7 @@ export function initGalaxy() {
       h('div', { class: 'sheet-count', title: 'Different paragraphs this galaxy can make' }, countEl, countLabel = h('span', {}, 'paragraphs')),
       h('button', { class: 'icon-btn', 'aria-label': 'Close galaxy', onclick: close }, icon('close'))),
     paraEl,
+    branchEl = h('div', { class: 'branch', hidden: true, 'aria-live': 'polite' }),
     partsEl,
     h('div', { class: 'add-row' }, addSel, h('button', { class: 'btn', onclick: addSelected }, icon('plus', 16), 'Add sentence')),
     h('div', { class: 'sheet-actions' },
@@ -112,6 +114,8 @@ function render() {
         : glossed(s.text, s.gloss, { class: 'w' })];
     }));
   }
+
+  renderBranch();
 
   // the list of parts with their links
   const items = [];
@@ -318,7 +322,7 @@ export function writeStory(length = 3) {
 
 // ------------------------------------------------------------ story mode
 const DEFAULT_CAST = { it: ['Marco', 'Giulia', 'Luca', 'Sofia'], es: ['Carlos', 'Lucía', 'Javier', 'Sofía'], en: ['Tom', 'Anna', 'Sam', 'Lily'] };
-const story = { cast: null, place: '', timeline: 'arc', length: 5 };
+const story = { cast: null, place: '', timeline: 'arc', length: 5, branch: true };
 
 /** Story mode: name your characters, pick a setting and a timeline, and the stars write their story. */
 export function storyMode() {
@@ -370,15 +374,27 @@ export function storyMode() {
     const cast = [...story.cast].map((n) => addCharacter(n, genderOf(n))).filter(Boolean).map((w) => w.id);
     if (!cast.length) { toast({ kind: 'info', title: 'Choose a character', body: 'Pick at least one character for the story.' }); return; }
     const place = story.place && state.words[story.place]?.lit ? story.place : null;
-    const st = characterStory({ cast, place, timeline: story.timeline, length: story.length });
-    if (!st || !st.parts.length) { toast({ kind: 'info', title: 'Not enough stars yet', body: 'Light a few more stars so full patterns can form.' }); return; }
-    closeModal();
+    const opts = { cast, place, timeline: story.timeline, length: story.length };
     const who = cast.map((id) => state.words[id].text);
     const title = `${who.length > 2 ? `${who.slice(0, -1).join(', ')} & ${who.at(-1)}` : who.join(' & ')}${place ? ` · ${state.words[place].text}` : ''}`;
-    state.galaxyDraft = { parts: st.parts, joins: st.joins, name: title.slice(0, 40), editingId: null };
-    bumpStat('made');
-    bumpStat('stories');
-    recordStory();
+    if (story.branch) {
+      // the opening sentence is given; after that, you choose what happens
+      const first = storySentence(opts, 0);
+      if (!first) { toast({ kind: 'info', title: 'Not enough stars yet', body: 'Light a few more stars so full patterns can form.' }); return; }
+      closeModal();
+      state.galaxyDraft = { parts: [first], joins: [], name: title.slice(0, 40), editingId: null };
+      branch = { opts, i: 1, draft: state.galaxyDraft, choices: storyChoices(opts, 1), ended: false };
+      bumpStat('made');
+    } else {
+      const st = characterStory(opts);
+      if (!st || !st.parts.length) { toast({ kind: 'info', title: 'Not enough stars yet', body: 'Light a few more stars so full patterns can form.' }); return; }
+      closeModal();
+      branch = null;
+      state.galaxyDraft = { parts: st.parts, joins: st.joins, name: title.slice(0, 40), editingId: null };
+      bumpStat('made');
+      bumpStat('stories');
+      recordStory();
+    }
     bumpSeen(pathIds());
     commit();
     if (!isOpen()) open();
@@ -399,9 +415,73 @@ export function storyMode() {
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Setting'), placeSel),
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Timeline'),
         radio('timeline', [['arc', 'Yesterday → today → tomorrow'], ['past', 'Past'], ['pres', 'Present'], ['fut', 'Future']])),
-      h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Length'), radio('length', [[3, '3 sentences'], [5, '5'], [7, '7']]))),
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Length'), radio('length', [[3, '3 sentences'], [5, '5'], [7, '7']])),
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'How it unfolds'), radio('branch', [[true, 'You choose what happens'], [false, 'Write it all at once']]))),
     footer: [h('button', { class: 'btn ghost', onclick: closeModal }, 'Cancel'), h('span', { class: 'grow' }), h('button', { class: 'btn primary', onclick: go }, icon('spark', 16), 'Write it')],
   });
+}
+
+// ------------------------------------------------------- branching stories
+let branch = null;
+
+/** "What happens next?" — two ways the story can go; your pick becomes the next sentence. */
+function renderBranch() {
+  if (!branch || branch.draft !== state.galaxyDraft) { branch = null; branchEl.hidden = true; fill(branchEl); return; }
+  branchEl.hidden = false;
+  const g = G();
+  if (branch.ended) {
+    fill(branchEl,
+      h('div', { class: 'branch-head' }, h('span', { class: 'kicker' }, '✦ The end'), h('span', { class: 'dim' }, `${g.parts.length} sentences, your choices`)),
+      h('div', { class: 'row wrap' },
+        h('button', { class: 'btn primary', onclick: saveBook }, icon('star', 16), g.editingId && state.galaxies[g.editingId]?.book ? 'Saved as a book ✓' : 'Save as a book'),
+        h('button', { class: 'btn', onclick: speakAll }, icon('speak', 16), 'Hear the story'),
+        h('button', { class: 'btn ghost', onclick: () => storyMode() }, 'Write another')));
+    return;
+  }
+  const choice = (s, k) => h('button', { class: 'branch-choice', onclick: () => choose(s) },
+    h('span', { class: 'branch-n' }, k ? 'B' : 'A'),
+    h('span', { class: 'branch-text' },
+      h('span', { class: 'branch-target' }, sentenceText(s.tokens, state.words, s.end)),
+      state.settings.gloss ? h('span', { class: 'branch-en' }, englishFor(s.tokens, state.words, s.end)) : null));
+  const left = branch.opts.length - branch.i;
+  fill(branchEl,
+    h('div', { class: 'branch-head' }, h('span', { class: 'kicker' }, 'What happens next?'), h('span', { class: 'dim' }, `${left} more sentence${left === 1 ? '' : 's'} to go`)),
+    branch.choices.length ? h('div', { class: 'branch-choices' }, branch.choices.map(choice)) : h('p', { class: 'lede dim' }, 'No more patterns fit — end the story here.'),
+    h('div', { class: 'row wrap' },
+      h('button', { class: 'btn small ghost', onclick: () => { branch.choices = storyChoices(branch.opts, branch.i); renderBranch(); } }, icon('shuffle', 14), 'Other options'),
+      h('button', { class: 'btn small ghost', onclick: endStory }, 'End the story here')));
+}
+
+function choose(s) {
+  const g = G();
+  const prev = g.parts[g.parts.length - 1];
+  g.joins.push(storyJoin(prev, s, g.joins[g.joins.length - 1]));
+  g.parts.push({ tokens: s.tokens, end: s.end, name: s.name });
+  branch.i += 1;
+  bumpSeen(s.tokens.map((t) => t.wordId));
+  bumpStat('made');
+  unlockAudio();
+  arpeggio(s.tokens.map((t) => state.words[t.wordId]?.cat), 0.05);
+  speak(sentenceText(s.tokens, state.words, s.end), speechOpts());
+  if (branch.i >= branch.opts.length) endStory();
+  else { branch.choices = storyChoices(branch.opts, branch.i); commit(); }
+  app.space.fitIds(pathIds(), { maxZ: 1, dur: 900 });
+}
+
+function endStory() {
+  branch.ended = true;
+  bumpStat('stories');
+  recordStory();
+  commit();
+}
+
+function saveBook() {
+  const g = G();
+  if (g.parts.length < 2) { toast({ kind: 'info', title: 'A book needs two sentences', body: 'Choose at least one more step.' }); return; }
+  g.name = (g.name || '').trim() || cosmicName('galaxy');
+  g.editingId = saveGalaxy({ id: g.editingId, name: g.name, parts: g.parts, joins: g.joins, book: true });
+  commit();
+  toast({ kind: 'signal', title: `New book: ${g.name}`, body: 'It’s in Logbook → Galaxies. Every word in it is still a variable.', action: { label: 'Logbook', fn: () => app.log.show('galaxies') } });
 }
 
 export function loadGalaxy(id) {

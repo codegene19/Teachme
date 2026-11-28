@@ -11,6 +11,7 @@ import { PIPER_VOICES, piperStatus, preparePiper, onPiperStatus, storedVoices, r
 import { diskInfo } from './disk.js';
 import { installed, canInstall, promptInstall, isOfflineReady, isIOS, onPwaChange } from './pwa.js';
 import { dueLabel, brightness } from './memory.js';
+import { startPlacement } from './placement.js';
 import { speak, getVoices, speechSupported, setSoundEnabled, voiceFor, voiceStatus, onVoicesChanged } from './sfx.js';
 
 export const TIERS = [
@@ -566,6 +567,9 @@ export function settings(section) {
           h('button', { class: 'btn ghost', onclick: () => { pasteBox.hidden = !pasteBox.hidden; if (!pasteBox.hidden) pasteArea.focus(); } }, 'Paste…'),
           file),
         pasteBox,
+        pack()?.levels ? h('div', { class: 'row wrap' },
+          h('button', { class: 'btn', onclick: () => { closeModal(); startPlacement({ fromSettings: true }); } }, icon('spark', 16), 'Find my level'),
+          h('small', { class: 'dim' }, `You are at ${pack().levels[state.level - 1]?.cefr || ''} · level ${state.level}. The test can move you forward, never back.`)) : null,
         h('div', { class: 'field-label' }, 'Start over in another language (this erases your current universe):'),
         h('div', { class: 'row wrap' },
           PACK_ORDER.map((id) => resetBtn(id, `${PACKS[id].name}${id === state.pack ? ' (restart)' : ''}`)),

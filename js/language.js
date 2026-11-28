@@ -9,6 +9,8 @@
 //            feelings agree with their subject ("lei è stanca"), qualities
 //            with the noun before them ("una casa nuova", "i biglietti cari")
 //   gender / plural — on subjects and nouns ("la casa" → f, "i soldi" → plural)
+//   nouns  — { def: [one, many], indef: [one, many] } for countable nouns; a token
+//            may carry num ('sg' | 'pl') and det ('def' | 'indef') to pick one
 // Each verb/adjective agrees with the nearest subject *before* it, so
 // "io voglio … perché tu hai …" conjugates each clause on its own.
 // A token may carry `inf` (use the infinitive), `slot` (the sector a variable
@@ -53,6 +55,8 @@ export function parseInput(text, resolve) {
       if (hit.info.inf) tok.inf = true;
       if (hit.info.person != null) tok.person = hit.info.person;
       if (hit.info.tense) tok.tense = hit.info.tense;
+      if (hit.info.num) tok.num = hit.info.num;
+      if (hit.info.det) tok.det = hit.info.det;
       tokens.push(tok);
       i += hit.len;
     } else { tokens.push({ text: parts[i], wordId: null }); i += 1; }
@@ -69,6 +73,40 @@ export function personAt(tokens, words, i) {
   return tokens[i]?.person ?? 0;
 }
 
+/** The shape of a noun in this slot: { det: 'def' | 'indef', pl }. The token's choice wins over the word's own. */
+export function nounShape(word, token = {}) {
+  if (!word?.nouns) return null;
+  return { det: token.det || word.det0 || 'def', pl: token.num ? token.num === 'pl' : !!word.plural };
+}
+
+// ------------------------------------------------------------- nouns
+const IRREGULAR = { person: 'people', child: 'children', man: 'men', woman: 'women', foot: 'feet', tooth: 'teeth' };
+const UNCOUNTABLE = /^(advice|information|news|homework|music|money|bread|milk|water|wine|cheese)$/;
+const plural = (w) => IRREGULAR[w] || (/(s|x|z|ch|sh)$/.test(w) ? `${w}es` : /[^aeiou]y$/.test(w) ? `${w.slice(0, -1)}ies` : `${w}s`);
+const singular = (w) => (/ies$/.test(w) ? `${w.slice(0, -3)}y` : /(ches|shes|xes|sses)$/.test(w) ? w.slice(0, -2) : /s$/.test(w) ? w.slice(0, -1) : w);
+// the word that changes: the one before "of" ("points of view"), otherwise the last ("train tickets")
+function changeHead(phrase, fn) {
+  const ws = phrase.split(' ');
+  const k = ws.indexOf('of');
+  const at = k > 0 ? k - 1 : ws.length - 1;
+  ws[at] = fn(ws[at]);
+  return ws.join(' ');
+}
+
+/** "a book" as "the books", "some books", "a book" or "the book", following the slot's shape. */
+export function englishNoun(word, gloss, token) {
+  const shape = nounShape(word, token);
+  if (!shape) return gloss;
+  const m = gloss.match(/^(a|an|the|some)\s+(.*)$/i);
+  let head = m ? m[2] : gloss;
+  if (word.plural) head = changeHead(head, singular);
+  const mass = UNCOUNTABLE.test(head.split(' ').pop());
+  const phrase = shape.pl && !mass ? changeHead(head, plural) : head;
+  if (shape.det === 'def') return `the ${phrase}`;
+  if (shape.pl || mass) return `some ${phrase}`;
+  return `${/^[aeiou]/i.test(phrase) && !/^(uni|eu|one)/i.test(phrase) ? 'an' : 'a'} ${phrase}`;
+}
+
 /**
  * What an agreeing word agrees with: { g: 'm' | 'f', pl, with: token index }.
  * Qualities follow the nearest noun before them in the clause; everything
@@ -81,7 +119,7 @@ export function agreeAt(tokens, words, i) {
     for (let j = i - 1; j >= 0; j--) {
       const o = words[tokens[j]?.wordId];
       if (!o || o.cat === 'link') break;
-      if (o.cat === 'thing') return { g: o.gender || 'm', pl: !!o.plural, with: j };
+      if (o.cat === 'thing') return { g: o.gender || 'm', pl: nounShape(o, tokens[j])?.pl ?? !!o.plural, with: j };
     }
     return { g: 'm', pl: false, with: -1 };
   }
@@ -124,6 +162,10 @@ export function clauseTenses(tokens, words, start = 'pres') {
 /** The form of a word as it appears in this slot. */
 export function surface(word, token = {}, person = 0, tense = 'pres', agree = null) {
   if (!word) return '';
+  if (word.nouns) {
+    const s = nounShape(word, token);
+    return word.nouns[s.det][s.pl ? 1 : 0] ?? word.text;
+  }
   if (word.agr) {
     const pl = agree ? agree.pl : person >= 3;
     const g = agree ? agree.g : G.selfGender;
@@ -155,8 +197,8 @@ export function sentenceSegments(tokens, words, { capitalize = true, end, tense:
     if (!segs.length && capitalize) text = cap(text);
     segs.push({
       kind: 'word', text, sep, wordId: w.id, index: i, isVar: !!t.var, cat: w.cat,
-      slot: t.slot || w.cat, gloss: w.gloss || '', inflected: text.toLowerCase() !== w.text.toLowerCase(),
-      tense: tenses[i], person, agree,
+      slot: t.slot || w.cat, gloss: w.nouns && w.gloss ? englishNoun(w, w.gloss.split(' / ')[0].replace(/\s*\([^)]*\)/g, '').trim(), t) : (w.gloss || ''), inflected: text.toLowerCase() !== w.text.toLowerCase(),
+      tense: tenses[i], person, agree, noun: nounShape(w, t),
     });
   });
   const open = capitalize && segs.length ? opener(end) : '';

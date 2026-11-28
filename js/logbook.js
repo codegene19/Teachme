@@ -135,10 +135,11 @@ function constellations() {
 }
 
 function galaxies() {
-  const list = Object.values(state.galaxies).sort((a, b) => b.updatedAt - a.updatedAt);
+  // books (finished branching stories) first, then the newest
+  const list = Object.values(state.galaxies).sort((a, b) => (b.book ? 1 : 0) - (a.book ? 1 : 0) || b.updatedAt - a.updatedAt);
   if (!list.length) return [h('p', { class: 'lede' }, 'No galaxies yet. A galaxy links sentences into a paragraph. Save a constellation first, then open Galaxy.')];
   return list.map((g) => h('div', { class: 'entry' },
-    h('div', { class: 'entry-head' }, h('b', {}, g.name), h('span', { class: 'grow' }), h('span', { class: 'pill' }, formatBig(countParagraph(g.parts, g.joins, state.words, derived.orbit)))),
+    h('div', { class: 'entry-head' }, g.book ? h('span', { class: 'pill book-pill' }, 'Book') : null, h('b', {}, g.name), h('span', { class: 'grow' }), h('span', { class: 'pill' }, formatBig(countParagraph(g.parts, g.joins, state.words, derived.orbit)))),
     h('div', { class: 'entry-sample serif' }, paragraphText(g.parts, g.joins, state.words)),
     h('div', { class: 'entry-tools' },
       h('button', { class: 'btn small', onclick: () => app.galaxy.loadGalaxy(g.id) }, icon('galaxy', 14), 'Open'),
@@ -228,7 +229,7 @@ function progress() {
     h('h4', { class: 'log-sub' }, 'Weak spots'),
     spots.length
       ? h('ul', { class: 'weak-list' }, spots.map(({ slip, n }) => h('li', {},
-        h('span', { class: `weak-kind ${slip.kind}` }, { person: 'Person', tense: 'Tense', word: 'Word', order: 'Order', agree: 'Agree' }[slip.kind]),
+        h('span', { class: `weak-kind ${slip.kind}` }, { person: 'Person', tense: 'Tense', word: 'Word', order: 'Order', agree: 'Agree', noun: 'Noun' }[slip.kind]),
         h('div', { class: 'weak-main' },
           h('b', {}, slipText(slip)),
           h('small', {}, `${n} slip${n === 1 ? '' : 's'}${slip.kind === 'word' && state.words[slip.id] ? ` · ${dueLabel(state.words[slip.id])}` : ''}`)),

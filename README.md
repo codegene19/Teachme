@@ -73,9 +73,21 @@ Describing words agree with what they describe. **Feelings** agree with their su
 
 In Practice the tile bank includes the wrong gender or number, and feedback explains it: “*stanco* is masculine singular, but it describes *lei* (feminine singular): *stanca*”. Agreement slips show up as weak spots with focused practice.
 
+### One or many, “the” or “a”
+
+Countable nouns have all four forms — *il libro, i libri, un libro, dei libri* · *el libro, los libros, un libro, unos libros* — with articles chosen by rule (*il / lo / l'*, *i / gli*, *un / uno / un'*, *dei / degli / delle*). Tap a noun in the Forge for **one / many** and **the / a**; a variable keeps that shape while it spins, and describing words follow it (*delle case nuove*). Typing *le case vecchie* is understood as it is. Generated sentences mix all four shapes, English prompts follow (“some books”, “the keys”), and Practice offers the other number or article, explaining it: “*i progetti* is plural, but the English says *the project*: *il progetto*”. Mass nouns (*il latte*, *agua*, *la libertà*) stay as they are.
+
+### Find your level
+
+On the first screen, **Know some Italian/Spanish already? Find your level** runs a short placement test: three questions per CEFR band (meanings, verb forms in that band's tenses, agreement and plural forms), climbing from A1 until a band is new to you — usually 3 to 12 questions, with an *I don't know* button so guessing doesn't push you too far. You start at that band's first level, every word before it lit, their first reviews spread over two weeks. It's also in **Settings → Universe → Find my level**, where it can move you forward but never back.
+
 ### Speak it back
 
 After any Practice answer, and in the Forge, **Say it** listens while you say the sentence (the browser's speech recognition: Chrome, Edge, Safari, Android). Each word is marked heard or missed, with a score and what was heard. Where speech recognition isn't available the button says so.
+
+### Branching stories
+
+Story mode now asks **how it unfolds**. With *You choose what happens*, the first sentence is given, then each step offers two different next sentences (A or B, with English) — different actions, places, outcomes — plus *Other options* and *End the story here*. Your pick is read aloud and the story moves along its timeline. At the end, **Save as a book**: books are listed first in Logbook → Galaxies, and every word in them is still a variable.
 
 ### Daily orbit
 
@@ -166,6 +178,8 @@ Without the script, any static server works (`python3 -m http.server 8000`) or G
 | `js/packs/it-agree.js`, `js/packs/es-agree.js` | Gendered feelings, QUALITY words, noun-gender exceptions, agreement patterns |
 | `js/speakback.js` | Speech recognition and word-by-word comparison |
 | `js/daily.js` | Daily orbit: plan, ring, calendar, streak |
+| `js/packs/it-nouns.js`, `js/packs/es-nouns.js` | Singular and plural of every countable noun (articles are added by rule) |
+| `js/placement.js` | Placement test |
 | `js/order.js` | Word-order rules: checks any sentence, suggests the fix, explains each move |
 | `js/memory.js` | Spaced-review schedule, star dimming |
 | `js/english.js` | English renderings of generated sentences (person, tense, negation, modals, adverb order) |

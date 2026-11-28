@@ -7,7 +7,7 @@ import {
 } from './store.js';
 import {
   sentenceSegments, sentenceText, countTokens, formatBig, parseInput, formulaParts, pickRandom, optionsFor,
-  personAt, surface, slotOf, clauseTenses, agreeAt,
+  personAt, surface, slotOf, clauseTenses, agreeAt, nounShape,
 } from './language.js';
 import { randomSentence, canGenerate } from './generate.js';
 import { app, h, fill, $, icon, toast, showPopover, hidePopover, isPopoverOpen } from './ui.js';
@@ -290,6 +290,7 @@ function openChipMenu(i, anchor) {
       : null,
     w.forms ? h('p', { class: 'pop-note' }, h('b', {}, w.text), ` (${w.gloss}) — `,
       t.inf ? 'shown in the infinitive, as it follows another verb.' : `conjugated for ${personLabel(personAt(F().tokens, state.words, i))}, ${tenseLabel(clauseTenses(F().tokens, state.words)[i])}.`) : null,
+    w.nouns ? nounControls(i, t, w) : null,
     w.cat === 'uncharted' ? h('p', { class: 'pop-note' }, 'This star has no sector yet — give it one so it can become a variable.') : null,
     !t.var && w.cat !== 'uncharted' && opts.length < 2
       ? h('p', { class: 'pop-note' }, `Only one ${c.label} star is lit so far. Discover more to make this spin.`) : null,
@@ -304,6 +305,20 @@ function openChipMenu(i, anchor) {
       h('button', { class: 'icon-btn small', 'aria-label': 'Move right', disabled: i === F().tokens.length - 1, onclick: () => { moveToken(i, i + 1); popIndex = -1; openChipMenu(i + 1, chipEl(i + 1)); } }, icon('right', 16)),
       h('button', { class: 'icon-btn small danger', 'aria-label': 'Remove word', onclick: () => { hidePopover(); removeToken(i); } }, icon('trash', 16))));
   showPopover(anchor || chipEl(i), body, { onClose: () => { popIndex = -1; } });
+}
+
+/** one ↔ many and the ↔ a for a noun; a variable keeps the choice as it spins. */
+function nounControls(i, t, w) {
+  const s = nounShape(w, t);
+  const es = state.pack === 'es';
+  const set = (patch) => { Object.assign(t, patch); commit(); refreshMenu(); };
+  const seg = (label, opts) => h('div', { class: 'noun-seg', role: 'radiogroup', 'aria-label': label },
+    opts.map(([on, text, patch]) => h('button', { class: `tense-tab${on ? ' active' : ''}`, role: 'radio', 'aria-checked': String(on), onclick: () => set(patch) }, text)));
+  return h('div', { class: 'noun-controls' },
+    seg('Number', [[!s.pl, 'one', { num: 'sg' }], [s.pl, 'many', { num: 'pl' }]]),
+    seg('Article', [[s.det === 'def', es ? (s.pl ? 'los / las' : 'el / la') : (s.pl ? 'i / gli / le' : 'il / lo / la'), { det: 'def' }],
+      [s.det === 'indef', es ? (s.pl ? 'unos / unas' : 'un / una') : (s.pl ? 'dei / degli / delle' : 'un / uno / una'), { det: 'indef' }]]),
+    h('small', { class: 'dim' }, t.var ? 'Every noun this slot spins to takes this shape.' : `${w.gender === 'f' ? 'Feminine' : 'Masculine'} noun.`));
 }
 
 function tenseLabel(t) {
@@ -417,6 +432,8 @@ function submitText(text) {
     const tk = { wordId: id, var: false };
     if (tok.inf) tk.inf = true;
     if (tok.person != null) tk.person = tok.person;
+    if (tok.num) tk.num = tok.num;
+    if (tok.det) tk.det = tok.det;
     F().tokens.push(tk);
   });
   if (end) F().end = end;

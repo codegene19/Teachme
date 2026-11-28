@@ -60,7 +60,9 @@ function buildLookup(entries) {
     add(e.text, e.forms ? { id: e.id, inf: true } : { id: e.id });
     e.forms?.forEach((f, i) => add(f, { id: e.id, person: i }));
     for (const [tense, list] of Object.entries(e.tenses || {})) list.forEach((f, i) => add(f, { id: e.id, person: i, tense }));
-    e.num?.forEach((f) => add(f, { id: e.id }));
+    [...(e.num || []), ...(e.agr || [])].forEach((f) => add(f, { id: e.id }));
+    // every form of a noun: "i libri" is the star "un libro", many, with "the"
+    for (const [det, list] of Object.entries(e.nouns || {})) list.forEach((f, k) => add(f, { id: e.id, num: k ? 'pl' : 'sg', det }));
   }
   return (phrase) => exact.get(norm(phrase)) || loose.get(fold(norm(phrase))) || null;
 }
@@ -69,7 +71,7 @@ const edgeCache = new Map();
 function edgesFor(pack) {
   if (!pack) return [];
   if (edgeCache.has(pack.id)) return edgeCache.get(pack.id);
-  const resolve = buildLookup(pack.words.map((w) => ({ id: packWordId(pack.id, w.t), text: w.t, forms: w.f, num: w.n || w.g4, tenses: w.ft })));
+  const resolve = buildLookup(pack.words.map((w) => ({ id: packWordId(pack.id, w.t), text: w.t, forms: w.f, num: w.n || w.g4, tenses: w.ft, nouns: w.nf })));
   const edges = [];
   for (const s of pack.examples || []) {
     const { tokens } = parseInput(s, resolve);
@@ -126,7 +128,7 @@ function addPackWords(s, p) {
       forms: pw.f || null, tenses: pw.ft || null, tense: pw.tense || null, num: pw.n || null, person: pw.p ?? null,
       also: pw.also || null, comma: !!pw.comma, joinComma: !!pw.joinComma, gal: p.levels ? galaxyIndex(pw.cefr) : 0,
       kind: pw.k || null, obj: pw.o || null, acts: pw.acts || null, scene: pw.sc || null,
-      agr: pw.g4 || null, gender: pw.g || null, plural: !!pw.pl,
+      agr: pw.g4 || null, gender: pw.g || null, plural: !!pw.pl, nouns: pw.nf || null, det0: pw.d0 || null,
     };
     const ex = s.words[id];
     if (ex) {
@@ -418,6 +420,41 @@ export function levelUp() {
   return state.level;
 }
 
+/**
+ * Placement: start at `level`, with every word of the earlier levels already
+ * lit. Their first reviews are spread over the next two weeks so they don't
+ * all come due at once. Never moves you backwards.
+ */
+export function placeAt(level) {
+  const p = pack();
+  if (!p?.levels) return null;
+  level = Math.max(1, Math.min(p.levels.length, level));
+  if (level <= state.level) return null;
+  const now = Date.now();
+  const DAY = 864e5;
+  for (const w of derived.list) {
+    if (!w.seed || !w.lvl || w.lvl >= level || w.lit) continue;
+    w.lit = true;
+    w.litAt = now;
+    w.seen = Math.max(w.seen || 0, 2);
+    w.placed = true;
+    w.mem = { interval: 3 + Math.random() * 5, due: now + (1 + Math.random() * 13) * DAY, reps: 1 };
+    discover(w.cat);
+  }
+  // patterns of the levels you skipped are known already: no fanfare for each
+  for (const bp of p.blueprints || []) if (bp.l && bp.l < level) state.sighted[bp.id] = state.sighted[bp.id] || now;
+  const from = state.level;
+  state.level = level;
+  state.levelBase = practiceTotal();
+  state.placedAt = { level, from, at: now };
+  const ids = derived.list.filter((w) => w.seed && w.lvl === level).map((w) => w.id);
+  const def = p.levels[level - 1];
+  const newGalaxy = galaxyIndex(def.cefr) !== galaxyIndex(p.levels[from - 1]?.cefr || 'A1') || def.cefr !== 'A1' ? GALAXIES[galaxyIndex(def.cefr)] : null;
+  commit();
+  emit('levelup', { level, ids, newGalaxy, placed: true });
+  return level;
+}
+
 // ---------------------------------------------------------------- mutations
 function discover(catId) {
   const c = state.categories[catId];
@@ -549,6 +586,8 @@ const cloneTokens = (tokens) => tokens.map((t) => {
   if (t.inf) c.inf = true;
   if (t.person != null) c.person = t.person;
   if (t.tense) c.tense = t.tense;
+  if (t.num) c.num = t.num;
+  if (t.det) c.det = t.det;
   return c;
 });
 
@@ -569,7 +608,7 @@ export function deleteConstellation(id) {
   commit();
 }
 
-export function saveGalaxy({ id, name, parts, joins }) {
+export function saveGalaxy({ id, name, parts, joins, book = false }) {
   const gid = id && state.galaxies[id] ? id : uid('g:');
   const prev = state.galaxies[gid];
   state.galaxies[gid] = {
@@ -577,6 +616,7 @@ export function saveGalaxy({ id, name, parts, joins }) {
     parts: parts.map((p) => ({ name: p.name || '', end: p.end || '.', tokens: cloneTokens(p.tokens) })),
     joins: joins.slice(0, Math.max(0, parts.length - 1)),
     createdAt: prev?.createdAt || Date.now(), updatedAt: Date.now(),
+    ...(book || prev?.book ? { book: true } : {}),
   };
   commit();
   return gid;

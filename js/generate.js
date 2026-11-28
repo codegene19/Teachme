@@ -53,7 +53,7 @@ const fitsScene = (kind, place) => !kind || !place.scene || place.scene === 'any
  * One random sentence. `who` keeps the subject; `tense` keeps every time word
  * in the same tense family, so a story stays in one timeline.
  */
-export function randomSentence({ who = null, tense = null, statementsOnly = false, place = null, cast = null, withTime = false } = {}) {
+export function randomSentence({ who = null, tense = null, statementsOnly = false, place = null, cast = null, withTime = false, noShapes = false } = {}) {
   const list = patterns({ statementsOnly, withTime });
   if (!list.length) return null;
   const bp = weighted(list);
@@ -122,7 +122,13 @@ export function randomSentence({ who = null, tense = null, statementsOnly = fals
       const same = opts.filter((id) => tenseOf(id) === tense && (tense !== 'pres' || state.words[id].cat === 'time'));
       if (same.length) pick = pickRandom(same);
     }
-    tokens.push({ ...t, wordId: pick || t.wordId });
+    const tok = { ...t, wordId: pick || t.wordId };
+    // nouns come as one or many, with "the" or "a / some"
+    if (W[tok.wordId]?.nouns && !noShapes) {
+      if (Math.random() < 0.35) tok.num = 'pl';
+      if (Math.random() < 0.3) tok.det = W[tok.wordId].det0 === 'def' ? 'indef' : 'def';
+    }
+    tokens.push(tok);
   }
   return { tokens, end: r.end, name: bp.name };
 }
@@ -160,23 +166,52 @@ const ARC = { arc: ['past', 'pres', 'fut'], past: ['past'], pres: ['pres'], fut:
  * ("arc" = yesterday → today → tomorrow). Each sentence's subject is one of
  * the characters; a second subject in the same sentence is another one.
  */
-export function characterStory({ cast = [], place = null, timeline = 'arc', length = 5 } = {}) {
-  if (!canGenerate() || !cast.length) return null;
+export function storySentence({ cast = [], place = null, timeline = 'arc', length = 5 } = {}, i = 0) {
   const times = derived.orbit.time || [];
-  const has = (t) => t === 'pres' ? times.some((id) => tenseOf(id) === 'pres') : times.some((id) => tenseOf(id) === t);
-  const phases = ARC[timeline].filter(has);
+  const phases = ARC[timeline].filter((t) => times.some((id) => tenseOf(id) === t));
+  const phase = phases.length ? phases[Math.min(phases.length - 1, Math.floor((i * phases.length) / length))] : null;
+  const s = randomSentence({ who: cast[i % cast.length], tense: phase, place, cast, statementsOnly: true, withTime: !!phase });
+  return s ? { tokens: s.tokens, end: s.end, name: s.name } : null;
+}
+
+const linkOf = (p) => p.tokens.some((t) => state.words[t.wordId]?.cat === 'link');
+
+/** A bridge word between two sentences, now and then, when neither has one already. */
+export function storyJoin(prev, next, lastJoin = null) {
+  const links = derived.orbit.link || [];
+  return links.length && !linkOf(prev) && !linkOf(next) && !lastJoin && Math.random() < 0.45 ? pickRandom(links) : null;
+}
+
+/**
+ * Two different ways the story could go next: different actions (and, when
+ * the setting is open, different places), so the choice means something.
+ */
+export function storyChoices(opts, i) {
+  const a = storySentence(opts, i);
+  if (!a) return [];
+  const key = (s) => s.tokens.filter((t) => ['action', 'thing', 'place'].includes(state.words[t.wordId]?.cat)).map((t) => t.wordId);
+  const ka = key(a);
+  let best = null;
+  for (let k = 0; k < 40; k++) {
+    const b = storySentence(opts, i);
+    if (!b) break;
+    const kb = key(b);
+    const diff = kb.filter((id) => !ka.includes(id)).length;
+    if (!best || diff > best.diff) best = { s: b, diff };
+    if (diff >= 2) break;
+  }
+  return best && best.diff > 0 ? [a, best.s] : [a];
+}
+
+export function characterStory(opts = {}) {
+  if (!canGenerate() || !opts.cast?.length) return null;
+  const length = opts.length || 5;
   const parts = [];
   for (let i = 0; i < length; i++) {
-    const phase = phases.length ? phases[Math.min(phases.length - 1, Math.floor((i * phases.length) / length))] : null;
-    const s = randomSentence({ who: cast[i % cast.length], tense: phase, place, cast, statementsOnly: true, withTime: !!phase });
-    if (s) parts.push({ tokens: s.tokens, end: s.end, name: s.name });
+    const s = storySentence({ ...opts, length }, i);
+    if (s) parts.push(s);
   }
-  const links = derived.orbit.link || [];
-  const hasLink = (p) => p.tokens.some((t) => state.words[t.wordId]?.cat === 'link');
   const joins = [];
-  parts.slice(1).forEach((p, i) => {
-    const free = links.length && !hasLink(p) && !hasLink(parts[i]) && !joins[i - 1];
-    joins.push(free && Math.random() < 0.45 ? pickRandom(links) : null);
-  });
+  parts.slice(1).forEach((p, i) => joins.push(storyJoin(parts[i], p, joins[i - 1])));
   return { parts, joins };
 }

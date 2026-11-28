@@ -3,7 +3,7 @@
 // the subject's person, each clause's tense, negation, modal + infinitive,
 // and English adverb order ("I always eat", "I am always happy").
 
-import { personAt, clauseTenses } from './language.js';
+import { personAt, clauseTenses, englishNoun } from './language.js';
 
 const PAST = {
   have: 'had', eat: 'ate', drink: 'drank', take: 'took', buy: 'bought', make: 'made', see: 'saw', find: 'found',
@@ -18,6 +18,8 @@ const PP = {
 const past = (v) => PAST[v] || (v.endsWith('e') ? `${v}d` : /[^aeiou]y$/.test(v) ? `${v.slice(0, -1)}ied` : `${v}ed`);
 const pp = (v) => PP[v] || past(v);
 const third = (v) => (v === 'have' ? 'has' : /(s|sh|ch|x|z|o)$/.test(v) ? `${v}es` : /[^aeiou]y$/.test(v) ? `${v.slice(0, -1)}ies` : `${v}s`);
+
+export { englishNoun };
 
 /** "take / have" → "take"; "give (as a gift)" → "give"; "you (formal)" → "you". */
 export const cleanGloss = (g) => String(g || '').split(' / ')[0].replace(/\s*\([^)]*\)/g, '').trim();
@@ -142,6 +144,7 @@ export function englishFor(tokens, words, end = '.') {
       lastModal = { g, pastish: tenses[i] === 'past' || tenses[i] === 'imp' };
       return;
     }
+    if (w.nouns) g = englishNoun(w, g, t);
     // English puts the describing word before the noun: "a new house", "an old car"
     if (w.cat === 'quality') {
       for (let j = out.length - 1; j >= 0; j--) {

@@ -6,15 +6,15 @@
 // and Piper's voice models are skipped: the Piper library keeps them in its
 // own browser storage.
 
-const VERSION = 'lexicosmos-v2';
+const VERSION = 'lexicosmos-v3';
 const SHELL = [
   './', './index.html', './manifest.json', './css/styles.css',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png',
   './js/charts.js', './js/daily.js', './js/disk.js', './js/drift.js', './js/eclipse.js', './js/english.js', './js/forge.js', './js/galaxy.js',
   './js/generate.js', './js/genesis.js', './js/language.js', './js/logbook.js', './js/main.js', './js/memory.js',
-  './js/missions.js', './js/order.js', './js/panels.js', './js/piper.js', './js/practice.js', './js/progress.js', './js/pwa.js', './js/seed.js',
+  './js/missions.js', './js/order.js', './js/panels.js', './js/piper.js', './js/placement.js', './js/practice.js', './js/progress.js', './js/pwa.js', './js/seed.js',
   './js/sfx.js', './js/space.js', './js/speakback.js', './js/store.js', './js/ui.js',
-  './js/packs/conjugate.js', './js/packs/en.js', './js/packs/es-extra.js', './js/packs/es-agree.js', './js/packs/it-agree.js', './js/packs/es.js', './js/packs/index.js',
+  './js/packs/conjugate.js', './js/packs/en.js', './js/packs/es-extra.js', './js/packs/es-agree.js', './js/packs/it-agree.js', './js/packs/es-nouns.js', './js/packs/it-nouns.js', './js/packs/es.js', './js/packs/index.js',
   './js/packs/it-extra.js', './js/packs/it.js',
   './js/vendor/piper-tts-web/piper-tts-web.js', './js/vendor/piper-tts-web/piper-o91UDS6e.js', './js/vendor/piper-tts-web/voices_static-D_OtJDHM.js',
 ];

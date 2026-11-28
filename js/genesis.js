@@ -3,6 +3,7 @@
 // and it ignites.
 
 import { state, findWord, ignite, addWord, resetUniverse, pack } from './store.js';
+import { startPlacement } from './placement.js';
 import { PACKS } from './packs/index.js';
 import { app, h, fill, $ } from './ui.js';
 import { unlockAudio, speak } from './sfx.js';
@@ -78,10 +79,25 @@ export function runGenesis(onDone, { askLanguage = true } = {}) {
         onclick: () => chooseWord(w.id),
       }, h('span', { class: 'mote-dot' }), h('span', { class: 'mote-word' }, w.text), w.gloss ? h('span', { class: 'mote-gloss' }, w.gloss) : null);
     }));
-    fill(alt, askLanguage
-      ? h('button', { type: 'button', class: 'link-btn', onclick: () => showLanguages() }, '← choose another language')
-      : null);
+    fill(alt,
+      askLanguage ? h('button', { type: 'button', class: 'link-btn', onclick: () => showLanguages() }, '← choose another language') : null,
+      askLanguage && p?.levels ? h('span', {}, ' · ') : null,
+      p?.levels ? h('button', { type: 'button', class: 'link-btn accent-link', onclick: () => findLevel() }, `Know some ${p.english} already? Find your level →`) : null);
     if (quick && window.matchMedia('(pointer: fine)').matches) setTimeout(() => input.focus({ preventScroll: true }), 400);
+  }
+
+  // placement: skip ahead, then arrive in the sky among the words you know
+  function findLevel() {
+    startPlacement({
+      onPlaced: () => {
+        const known = Object.values(state.words).filter((w) => w.lit && w.placed);
+        const w = known[known.length - 1] || known[0];
+        if (!w) return;
+        app.space.setMode('live');
+        app.space.jumpTo(w.x, w.y, 0.16);
+        finish(w.id);
+      },
+    });
   }
 
   function finish(id) {
